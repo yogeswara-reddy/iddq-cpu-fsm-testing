@@ -19,6 +19,7 @@ set(ASM_TESTS
     instr03loadword
     instr04loadbyteu
     instr05loadhalfu
+    instr06addi
     instr19add
     instr07slli
     instr29lui

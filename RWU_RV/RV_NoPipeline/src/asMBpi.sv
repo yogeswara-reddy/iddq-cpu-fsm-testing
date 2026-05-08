@@ -42,7 +42,7 @@ module as_master_bpi #( parameter addr_width = 64,
   assign wb_m_we_o   = wr_i;
   
   // SEL: All bytes valid (full data width transfer)
-  assign wb_m_sel_o = {(data_width/8){1'b1}};
+  assign wb_m_sel_o = '1;
   
   // STB and CYC are always asserted (continuous operation)
   // For simple synchronous memories, this creates zero wait-state transfers

@@ -64,8 +64,8 @@ module as_top_mem (input logic                       clk_i,
   // JTAG: I-Mem scan chain
   logic [im_scan_length-1:0] im_datai_s, im_datao_s;
   // JTAG: I-Mem Address MUX
-  logic [iaddr_width-1:0] iBusAddr2_s;   // address for imem
-  logic [iaddr_width-1:0] im_addr_s;   // address for imem from chain
+  logic [im_addr_width-1:0] iBusAddr2_s;   // address for imem
+  logic [im_addr_width-1:0] im_addr_s;   // address for imem from chain
   logic			  mux_sel_s;
   logic [6:0]		  opcode_s;
   logic [2:0]		  func3_s;

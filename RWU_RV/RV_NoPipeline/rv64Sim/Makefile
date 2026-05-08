@@ -1,5 +1,5 @@
 #PROJECT = allinstructions
-PROJECT = readgpioid
+#PROJECT = readgpioid
 #PROJECT = instr02loadhalf
 #PROJECT = instr01loadbyte
 #PROJECT = instr03loadword
@@ -7,6 +7,7 @@ PROJECT = readgpioid
 #PROJECT = instr05loadhalfu
 #PROJECT = instr99loadimem
 #PROJECT = instr19add
+PROJECT = add
 #PROJECT = instr51csrrw
 #PROJECT = rv64i
 

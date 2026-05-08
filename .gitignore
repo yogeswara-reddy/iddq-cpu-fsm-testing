@@ -118,6 +118,9 @@ build/
 *.str
 *.wdb
 *.pb
+*.wcfg
+*.v
+*.mem
 
 # =========================
 # LibreOffice

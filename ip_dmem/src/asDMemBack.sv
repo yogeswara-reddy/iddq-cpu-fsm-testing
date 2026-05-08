@@ -63,9 +63,9 @@ module as_dmem_back ( input  logic [dmem_addr_width-1:0] addr_i,
                                else
                                  data_o = {{48{dataRd_i[63]}}, dataRd_i[63:48]}; // lh, half-word aligned
 		     3'b010 :  if (addr_i[awidth-1:2] % 2 == 0)
-                                 data_o = {{40{dataRd_i[31]}}, dataRd_i[31:0]};  // lw, word aligned
+                                 data_o = {{32{dataRd_i[31]}}, dataRd_i[31:0]};  // lw, word aligned
                                else
-                                 data_o = {{40{dataRd_i[63]}}, dataRd_i[63:32]}; // lw, word aligned
+                                 data_o = {{32{dataRd_i[63]}}, dataRd_i[63:32]}; // lw, word aligned
                      3'b011 :  data_o = dataRd_i; // ld, double word aligned
 		     3'b100 :  if (addr_i[awidth-1:0] % 8 == 0)
                                  data_o = {56'b0, dataRd_i[7:0]};  // lbu, byte aligned
@@ -92,9 +92,9 @@ module as_dmem_back ( input  logic [dmem_addr_width-1:0] addr_i,
                                else
                                  data_o = {48'b0, dataRd_i[63:48]}; // lhu, half-word aligned
 		     3'b110 :  if (addr_i[awidth-1:2] % 2 == 0)
-                                 data_o = {40'b0, dataRd_i[31:0]}; // lwu, word aligned
+                                 data_o = {32'b0, dataRd_i[31:0]}; // lwu, word aligned
                                else
-                                 data_o = {40'b0, dataRd_i[63:32]}; // lwu, word aligned
+                                 data_o = {32'b0, dataRd_i[63:32]}; // lwu, word aligned
 		     default : data_o = dataRd_i; // ld
                    endcase // case (func3_s)
       default : data_o = dataRd_i;

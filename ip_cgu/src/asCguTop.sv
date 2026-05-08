@@ -72,7 +72,7 @@ module as_cgu_top #(parameter cguaddr_width = 64)
     if(rst_i == 1)
       id_reg_s        <= cgu_id_reg_addr_rst_c;
     else
-      if ( (en_s == 1) & (addr_s == cgu_id_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == cgu_id_reg_addr_offs_c[cguaddr_width-1:0]) )
         id_reg_s      <= data_s;
   end
 
@@ -80,8 +80,8 @@ module as_cgu_top #(parameter cguaddr_width = 64)
   always_comb
   begin
     case(addr_s)
-      cgu_id_reg_addr_offs_c         : dataob_s = id_reg_s;
-      default                        : dataob_s = 0; // should not happen
+      cgu_id_reg_addr_offs_c[cguaddr_width-1:0]         : dataob_s = id_reg_s;
+      default                                           : dataob_s = 0; // should not happen
     endcase
   end
   

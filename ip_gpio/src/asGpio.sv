@@ -52,7 +52,7 @@ module as_gpio ( input  logic                       rst_i,
     if(rst_i == 1)
       cs_o          <= 0;
     else
-      if ( (en_i == 1) & (addr_i == gpio_data_reg_addr_offs_c) )
+      if ( (en_i == 1) & (addr_i == gpio_data_reg_addr_offs_c[gpio_addr_width-1:0]) )
         cs_o        <= en_i;
       else
         cs_o        <= 0;

@@ -152,6 +152,8 @@ module as_cpux (input  logic                         clk_i,
   logic is_mret_fetched_s;  // MRET detected in fetch1 (from I-Mem)
 
   logic	gated_clk_s;
+  logic	clk_mux_s;
+  
   
 
   assign ir_o = ir_s; // instruction register
@@ -165,7 +167,7 @@ module as_cpux (input  logic                         clk_i,
   //--------------------------------------------
   // Master BPI Data Bus
   //--------------------------------------------
-  assign dbpi_req_s = 1'b1; // kann weg!!
+  //assign dbpi_req_s = 1'b1; // kann weg!!
 
   assign dBusWe_o     = dMemWr_s && exec_phase_s;
   assign dBusAddr_o   = dBusAddr_s;
@@ -337,8 +339,8 @@ module as_cpux (input  logic                         clk_i,
     case(immSrcx_s)
       IMM_I    : immExt_s = {{(XLEN-12){ir_s[31]}},ir_s[31:20]}; // I-type: sign ext, immediate (12 b)
       IMM_S    : immExt_s = {{(XLEN-12){ir_s[31]}},ir_s[31:25],ir_s[11:7]}; // S-type: sign ext, immediate1 (7 b), immediate2 (5 b)
-      IMM_B    : immExt_s = {{(XLEN-13){ir_s[31]}},ir_s[7],ir_s[30:25],ir_s[11:8],1'b0}; // B-type: sign ext, imm1 (1 b), imm2 (6 b), imm3 (4 b), *2
-      IMM_J    : immExt_s = {{(XLEN-21){ir_s[31]}},ir_s[19:12],ir_s[20],ir_s[30:21],1'b0}; // J-type: sign ext, imm1 (8 b), imm2 (1 b), imm3 (10 b), *2
+      IMM_B    : immExt_s = {{(XLEN-12){ir_s[31]}},ir_s[7],ir_s[30:25],ir_s[11:8],1'b0}; // B-type: sign ext, imm1 (1 b), imm2 (6 b), imm3 (4 b), *2
+      IMM_J    : immExt_s = {{(XLEN-20){ir_s[31]}},ir_s[19:12],ir_s[20],ir_s[30:21],1'b0}; // J-type: sign ext, imm1 (8 b), imm2 (1 b), imm3 (10 b), *2
       IMM_U    : immExt_s = {{(XLEN-32){1'b0}}, ir_s[31:12], 12'b0}; // // U-type: zero ext, imm, zero; lui, auipc
       IMM_NONE : immExt_s = {reg_width{1'b0}};
       default  : immExt_s = {reg_width{1'b0}};
@@ -548,6 +550,7 @@ module as_cpux (input  logic                         clk_i,
             3'b101: csr_mie_s <= {{52{1'b0}}, ir_s[19:15], 7'b0};               // csrrwi
             3'b110: csr_mie_s <= csr_mie_s | {{52{1'b0}}, ir_s[19:15], 7'b0};   // csrrsi
             3'b111: csr_mie_s <= csr_mie_s & ~{{52{1'b0}}, ir_s[19:15], 7'b0};  // csrrci
+	    default: csr_mie_s <= regA_s;
           endcase
     end
   end
@@ -591,6 +594,7 @@ module as_cpux (input  logic                         clk_i,
                 3'b101: csr_mstatus_s <= {{52{1'b0}}, ir_s[19:15], 7'b0};
                 3'b110: csr_mstatus_s <= csr_mstatus_s | {{52{1'b0}}, ir_s[19:15], 7'b0};
                 3'b111: csr_mstatus_s <= csr_mstatus_s & ~{{52{1'b0}}, ir_s[19:15], 7'b0};
+		default: csr_mie_s <= regA_s;
               endcase
     end
   end
@@ -620,6 +624,7 @@ module as_cpux (input  logic                         clk_i,
               3'b101: csr_mepc_s <= {{52{1'b0}}, ir_s[19:15], 7'b0};
               3'b110: csr_mepc_s <= csr_mepc_s | {{52{1'b0}}, ir_s[19:15], 7'b0};
               3'b111: csr_mepc_s <= csr_mepc_s & ~{{52{1'b0}}, ir_s[19:15], 7'b0};
+	      default: csr_mie_s <= regA_s;
             endcase
     end
   end
@@ -643,6 +648,7 @@ module as_cpux (input  logic                         clk_i,
             3'b101: csr_mtvec_s <= {{52{1'b0}}, ir_s[19:15], 7'b0};
             3'b110: csr_mtvec_s <= csr_mtvec_s | {{52{1'b0}}, ir_s[19:15], 7'b0};
             3'b111: csr_mtvec_s <= csr_mtvec_s & ~{{52{1'b0}}, ir_s[19:15], 7'b0};
+	    default: csr_mie_s <= regA_s;
           endcase
   end
   

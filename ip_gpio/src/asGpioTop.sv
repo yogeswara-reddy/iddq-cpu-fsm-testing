@@ -126,7 +126,7 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
     if(rst_i == 1)
       irqsc_reg_s        <= gpio_irqsc_reg_rst_c;
     else
-      if ( (en_s == 1) & (addr_s == gpio_irqsc_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == gpio_irqsc_reg_addr_offs_c[gpioaddr_width-1:0]) )
         irqsc_reg_s      <= data_s;
       else
         if(irqsc_comb_s)
@@ -139,7 +139,7 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
     if(rst_i == 1)
       irqsm_reg_s        <= gpio_irqsm_reg_rst_c;
     else
-      if ( (en_s == 1) & (addr_s == gpio_irqsm_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == gpio_irqsm_reg_addr_offs_c[gpioaddr_width-1:0]) )
         irqsm_reg_s      <= data_s;
   end
 
@@ -163,7 +163,7 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
     if(rst_i == 1)
       isr_reg_s        <= gpio_isr_reg_rst_c;
     else
-      if ( (en_s == 1) & (addr_s == gpio_isr_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == gpio_isr_reg_addr_offs_c[gpioaddr_width-1:0]) )
         isr_reg_s      <= data_s;
   end
 
@@ -173,7 +173,7 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
     if(rst_i == 1)
       imsc_reg_s        <= gpio_imsc_reg_rst_c;
     else
-      if ( (en_s == 1) & (addr_s == gpio_imsc_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == gpio_imsc_reg_addr_offs_c[gpioaddr_width-1:0]) )
         imsc_reg_s      <= data_s;
   end
 
@@ -208,7 +208,7 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
     if(rst_i == 1)
       id_reg_s        <= gpio_id_reg_addr_rst_c;
     else
-      if ( (en_s == 1) & (addr_s == gpio_id_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == gpio_id_reg_addr_offs_c[gpioaddr_width-1:0]) )
         id_reg_s      <= data_s;
   end
 
@@ -218,7 +218,7 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
     if(rst_i == 1)
       dir_reg_s <= gpio_direction_reg_addr_rst_c;
     else
-      if ( (en_s == 1) & (addr_s == gpio_direction_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == gpio_direction_reg_addr_offs_c[gpioaddr_width-1:0]) )
         dir_reg_s <= data_s;
   end
 
@@ -231,12 +231,12 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
       always_ff @(posedge clk_i, posedge rst_i)
       begin
         if(rst_i == 1)
-          data_reg_s[i] <= gpio_data_reg_addr_rst_c[nr_gpios-1:0];
+          data_reg_s[i] <= gpio_data_reg_addr_rst_c[i];
         else
           if (dir_reg_s[i])
             data_reg_s[i] <= dataok_s[i];  // pad to register
           else
-            if ( (en_s == 1) & (addr_s == gpio_data_reg_addr_offs_c) )
+            if ( (en_s == 1) & (addr_s == gpio_data_reg_addr_offs_c[gpioaddr_width-1:0]) )
               data_reg_s[i] <= data_s[i];  // bus to register
       end
     end
@@ -246,9 +246,9 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
   always_ff @(posedge clk_i, posedge rst_i)
   begin
     if(rst_i == 1)
-      data_reg_s[reg_width-1:nr_gpios] <= gpio_data_reg_addr_rst_c;
+      data_reg_s[reg_width-1:nr_gpios] <= gpio_data_reg_addr_rst_c[reg_width-1:nr_gpios];
     else
-      if ( (en_s == 1) & (addr_s == gpio_data_reg_addr_offs_c) )
+      if ( (en_s == 1) & (addr_s == gpio_data_reg_addr_offs_c[gpioaddr_width-1:0]) )
 	data_reg_s[reg_width-1:nr_gpios] <= data_s[reg_width-1:nr_gpios];
   end
   
@@ -256,17 +256,17 @@ module as_gpio_top #( parameter gpioaddr_width = 64,
   always_comb
   begin
     case(addr_s)
-      gpio_id_reg_addr_offs_c        : dataob_s = id_reg_s;
-      gpio_direction_reg_addr_offs_c : dataob_s = dir_reg_s;
-      gpio_data_reg_addr_offs_c      : dataob_s = data_reg_s;
-      gpio_irqss_reg_addr_offs_c     : dataob_s = irqss_reg_s;
-      gpio_irqsc_reg_addr_offs_c     : dataob_s = 0;
-      gpio_irqsm_reg_addr_offs_c     : dataob_s = irqsm_reg_s;
-      gpio_imsc_reg_addr_offs_c      : dataob_s = imsc_reg_s;
-      gpio_isr_reg_addr_offs_c       : dataob_s = 0;
-      gpio_mis_reg_addr_offs_c       : dataob_s = mis_reg_s;
-      gpio_ris_reg_addr_offs_c       : dataob_s = ris_reg_s;
-      default                        : dataob_s = 0; // should not happen
+      gpio_id_reg_addr_offs_c[gpioaddr_width-1:0]        : dataob_s = id_reg_s;
+      gpio_direction_reg_addr_offs_c[gpioaddr_width-1:0] : dataob_s = dir_reg_s;
+      gpio_data_reg_addr_offs_c[gpioaddr_width-1:0]      : dataob_s = data_reg_s;
+      gpio_irqss_reg_addr_offs_c[gpioaddr_width-1:0]     : dataob_s = irqss_reg_s;
+      gpio_irqsc_reg_addr_offs_c[gpioaddr_width-1:0]     : dataob_s = 0;
+      gpio_irqsm_reg_addr_offs_c[gpioaddr_width-1:0]     : dataob_s = irqsm_reg_s;
+      gpio_imsc_reg_addr_offs_c[gpioaddr_width-1:0]      : dataob_s = imsc_reg_s;
+      gpio_isr_reg_addr_offs_c[gpioaddr_width-1:0]       : dataob_s = 0;
+      gpio_mis_reg_addr_offs_c[gpioaddr_width-1:0]       : dataob_s = mis_reg_s;
+      gpio_ris_reg_addr_offs_c[gpioaddr_width-1:0]       : dataob_s = ris_reg_s;
+      default                                            : dataob_s = 0; // should not happen
     endcase
   end
   
