@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.20)
 project(rv64i_sim LANGUAGES NONE)
 
 # -------------------------------------------------
-# Roots (MUSS gesetzt sein)
+# Pflicht-Variablen (müssen vom Root-CMake kommen)
 # -------------------------------------------------
-foreach(var PROJECT_ROOT IP_ROOT RV64_MEM)
+foreach(var PROJECT_ROOT IP_ROOT RV64_MEM TB_FILE)
     if(NOT DEFINED ${var})
         message(FATAL_ERROR "${var} not set")
     endif()
@@ -12,6 +12,15 @@ endforeach()
 
 if(NOT EXISTS ${RV64_MEM})
     message(FATAL_ERROR "RV64_MEM does not exist: ${RV64_MEM}")
+endif()
+
+if(NOT EXISTS ${TB_FILE})
+    message(FATAL_ERROR "TB_FILE does not exist: ${TB_FILE}")
+endif()
+
+# Simulator-Backend (Default: xsim)
+if(NOT DEFINED SIMULATOR)
+    set(SIMULATOR "xsim")
 endif()
 
 set(TB_TOP tb_rv64i)
@@ -40,7 +49,7 @@ set(SOURCES_SV
     ${PROJECT_ROOT}/src/asAluBr.sv
     ${PROJECT_ROOT}/src/asControlAll.sv
     ${PROJECT_ROOT}/src/asInstrDecode.sv
-    
+
     ${IP_ROOT}/ip_jtag/src/tap_fsm.sv
     ${IP_ROOT}/ip_jtag/src/ir_cell.sv
     ${IP_ROOT}/ip_jtag/src/dr_cell.sv
@@ -65,46 +74,92 @@ set(SOURCES_SV
     ${IP_ROOT}/ip_cgu/src/asCguTop.sv
 
     ${PROJECT_ROOT}/src/asTopMem.sv
-    ${PROJECT_ROOT}/tb/tb_rv64i.sv
+    ${TB_FILE}
 )
 
-# -------------------------------------------------
-# Compile
-# -------------------------------------------------
-add_custom_command(
-    OUTPUT compile.stamp
-    COMMAND xvlog --sv --incr --relax -d LOGIC_SV ${SOURCES_SV}
-    COMMAND ${CMAKE_COMMAND} -E copy ${RV64_MEM} riscvtest.mem
-    COMMAND touch compile.stamp
-    DEPENDS ${RV64_MEM}
-    COMMENT "Compiling SystemVerilog"
-)
+# =================================================
+# XSIM (Vivado Simulator)
+# =================================================
+if(SIMULATOR STREQUAL "xsim")
 
-add_custom_target(compile DEPENDS compile.stamp)
+    # ---------------- Compile ----------------
+    add_custom_command(
+        OUTPUT compile.stamp
+        COMMAND xvlog --sv --incr --relax -d LOGIC_SV ${SOURCES_SV}
+        COMMAND ${CMAKE_COMMAND} -E copy ${RV64_MEM} riscvtest.mem
+        COMMAND ${CMAKE_COMMAND} -E touch compile.stamp
+        DEPENDS ${RV64_MEM}
+        COMMENT "Compiling SystemVerilog (xvlog)"
+    )
+    add_custom_target(compile DEPENDS compile.stamp)
 
-# -------------------------------------------------
-# Elaborate
-# -------------------------------------------------
-add_custom_command(
-    OUTPUT elaborate.stamp
-    COMMAND xelab -debug all -top ${TB_TOP} -snapshot ${TB_TOP}_snapshot
-    DEPENDS compile.stamp
-)
+    # ---------------- Elaborate ----------------
+    add_custom_command(
+        OUTPUT elaborate.stamp
+        COMMAND xelab -debug all -top ${TB_TOP} -snapshot ${TB_TOP}_snapshot
+        COMMAND ${CMAKE_COMMAND} -E touch elaborate.stamp
+        DEPENDS compile.stamp
+        COMMENT "Elaborating (xelab)"
+    )
+    add_custom_target(elaborate DEPENDS elaborate.stamp)
 
-add_custom_target(elaborate DEPENDS elaborate.stamp)
+    # ---------------- Simulate (kein GUI) ----------------
+    add_custom_target(simulate
+        COMMAND xsim ${TB_TOP}_snapshot --tclbatch ${PROJECT_ROOT}/sim/xsim_cfg.tcl
+        DEPENDS elaborate.stamp
+        COMMENT "Simulating (xsim)"
+    )
 
-# -------------------------------------------------
-# Simulate
-# -------------------------------------------------
-add_custom_target(simulate
-    COMMAND xsim ${TB_TOP}_snapshot --tclbatch ${PROJECT_ROOT}/sim/xsim_cfg.tcl
-    DEPENDS elaborate.stamp
-)
+    # ---------------- Waves (Vivado GUI) ----------------
+    add_custom_target(waves
+        COMMAND xsim --gui ${TB_TOP}_snapshot --tclbatch ${PROJECT_ROOT}/sim/xsim_cfg2.tcl
+        DEPENDS elaborate.stamp
+        COMMENT "Simulating with Vivado Waveform GUI (xsim --gui)"
+    )
 
-# -------------------------------------------------
-# Waves
-# -------------------------------------------------
-add_custom_target(waves
-    COMMAND xsim --gui ${TB_TOP}_snapshot --tclbatch ${PROJECT_ROOT}/sim/xsim_cfg2.tcl
-    DEPENDS elaborate.stamp
-)
+# =================================================
+# VERILATOR
+# =================================================
+elseif(SIMULATOR STREQUAL "verilator")
+
+    set(VERILATOR_OUT ${CMAKE_CURRENT_BINARY_DIR}/obj_dir/V${TB_TOP})
+
+    # ---------------- Verilate + Build ----------------
+    # --trace aktiviert FST-Waveform-Ausgabe (dump.fst)
+    add_custom_command(
+        OUTPUT ${VERILATOR_OUT}
+        COMMAND verilator
+                --binary
+                --sv
+                -Wall
+                --Mdir ${CMAKE_CURRENT_BINARY_DIR}/obj_dir
+                -DLOGIC_SV
+                --trace-fst
+                --top-module ${TB_TOP}
+                ${SOURCES_SV}
+        DEPENDS ${RV64_MEM}
+        COMMENT "Verilating and building ${TB_TOP}"
+    )
+    add_custom_target(verilate DEPENDS ${VERILATOR_OUT})
+
+    # ---------------- Simulate ----------------
+    add_custom_target(simulate
+        COMMAND ${CMAKE_COMMAND} -E copy ${RV64_MEM} riscvtest.mem
+        COMMAND ${VERILATOR_OUT}
+        DEPENDS ${VERILATOR_OUT}
+        COMMENT "Running Verilator simulation"
+    )
+
+    # ---------------- Waves (GTKWave) ----------------
+    # Simulation läuft zuerst, dann öffnet GTKWave die erzeugte dump.fst
+    add_custom_target(waves
+        COMMAND ${CMAKE_COMMAND} -E copy ${RV64_MEM} riscvtest.mem
+        COMMAND ${VERILATOR_OUT}
+        COMMAND gtkwave dump.fst &
+        DEPENDS ${VERILATOR_OUT}
+        COMMENT "Running Verilator simulation + GTKWave"
+    )
+
+else()
+    message(FATAL_ERROR "Unbekannter SIMULATOR '${SIMULATOR}'. Wähle: xsim | verilator")
+endif()

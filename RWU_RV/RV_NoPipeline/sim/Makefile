@@ -1,3 +1,4 @@
+PYTHON_BIN = python3
 TOPLEVEL_LANG = verilog
 SIM = verilator
 

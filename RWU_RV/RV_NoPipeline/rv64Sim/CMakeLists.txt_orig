@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(rv64i_asm LANGUAGES ASM)
 
 # -------------------------------------------------
-# Tools (absoluter Pfad)
+# Tools (ABSOLUT erlaubt)
 # -------------------------------------------------
 set(RISCV_PREFIX /opt/riscv/bin/riscv64-unknown-linux-gnu)
 set(AS       ${RISCV_PREFIX}-as)
@@ -10,20 +10,12 @@ set(LD       ${RISCV_PREFIX}-ld)
 set(OBJCOPY  ${RISCV_PREFIX}-objcopy)
 
 # -------------------------------------------------
-# Eingabe: ASM_FILE kann von außen übergeben werden
-#   cmake -DASM_FILE=<pfad> -S rv64Sim -B build/asm
-# Fallback: rv64i.asm im Source-Verzeichnis
+# Inputs / Outputs
 # -------------------------------------------------
-if(NOT DEFINED ASM_FILE)
-    set(ASM_FILE ${CMAKE_CURRENT_SOURCE_DIR}/rv64i.asm)
-endif()
-
-# -------------------------------------------------
-# Outputs (immer im Build-Verzeichnis)
-# -------------------------------------------------
-set(OBJ ${CMAKE_CURRENT_BINARY_DIR}/rv64i.o)
-set(ELF ${CMAKE_CURRENT_BINARY_DIR}/rv64i.elf)
-set(MEM ${CMAKE_CURRENT_BINARY_DIR}/rv64i.mem)
+set(ASM_FILE ${CMAKE_CURRENT_SOURCE_DIR}/rv64i.asm)
+set(OBJ      ${CMAKE_CURRENT_BINARY_DIR}/rv64i.o)
+set(ELF      ${CMAKE_CURRENT_BINARY_DIR}/rv64i.elf)
+set(MEM      ${CMAKE_CURRENT_BINARY_DIR}/rv64i.mem)
 
 # -------------------------------------------------
 # ASM → OBJ
@@ -55,9 +47,9 @@ add_custom_command(
 
 # -------------------------------------------------
 # ELF → MEM
-#   sed: spaces → newlines
-#   sed: CR entfernen
-#   sed: erste Zeile (Adress-Header) entfernen
+# sed: replace spaces with CR
+# sed: delete ^M
+# sed: delete first line
 # -------------------------------------------------
 add_custom_command(
     OUTPUT ${MEM}
@@ -75,4 +67,5 @@ add_custom_command(
 
 add_custom_target(mem ALL DEPENDS ${MEM})
 
+# Export für Simulation
 set(RV64_MEM ${MEM} CACHE FILEPATH "RV64 memory image")

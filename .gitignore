@@ -114,6 +114,8 @@ sim/
 !sim/Makefile
 !sim/Makefile_COCO
 !sim/Makefile_SV
+!sim/CMakeLists.txt
+!sim/CMakeLists.txt_orig
 build/
 .cache/
 *.jou
