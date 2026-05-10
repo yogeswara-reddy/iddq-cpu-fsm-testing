@@ -47,7 +47,7 @@ set(SOURCES_SV
     #${PROJECT_ROOT}/src/asAluRV.sv
     ${PROJECT_ROOT}/src/asAlu.sv
     ${PROJECT_ROOT}/src/asAluBr.sv
-    ${PROJECT_ROOT}/src/asControlAll.sv
+    #${PROJECT_ROOT}/src/asControlAll.sv
     ${PROJECT_ROOT}/src/asInstrDecode.sv
 
     ${IP_ROOT}/ip_jtag/src/tap_fsm.sv
