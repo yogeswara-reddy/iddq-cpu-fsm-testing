@@ -129,8 +129,11 @@ elseif(SIMULATOR STREQUAL "verilator")
     add_custom_command(
         OUTPUT ${VERILATOR_OUT}
         COMMAND verilator
-                --binary
+                --cc
+                --exe ${PROJECT_ROOT}/sim/sim_main.cpp
+                --build
                 --sv
+                --timing
                 -Wall
                 -Wno-fatal
                 -Wno-DECLFILENAME
