@@ -1749,6 +1749,173 @@ Full updated interface definitions are in
 Sections~\ref{subsec:iBusIf} and~\ref{subsec:dBusIf}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{QSPI Operating Mode -- Cache-Miss-Driven Read}
+\label{subsec:qspiMode}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{XIP Terminology Clarification}
+
+The term \emph{Execute-In-Place} (XIP) is used with two distinct meanings
+in the literature:
+
+\begin{itemize}
+  \item \textbf{True XIP (Continuous Read mode):} the QSPI controller
+    keeps the Flash chip-select asserted and the device in a special
+    Continuous Read state; subsequent reads require only the address
+    (no repeated opcode), reducing per-transaction overhead.
+    Requires the Flash to support a Performance Enhance or XIP mode bit.
+  \item \textbf{Indirect XIP (cache-miss-driven):} the CPU executes code
+    that resides in Flash, but each cache miss triggers a complete SPI
+    command sequence (opcode + address + dummy + data).
+    The chip-select is asserted only for the duration of each burst.
+    No special Flash mode is required.
+\end{itemize}
+
+\textbf{Decision:} the RWU-RV64I uses \textbf{indirect XIP}
+(cache-miss-driven burst mode).
+True XIP mode is neither necessary nor advantageous for this architecture,
+as explained below.
+
+\subsubsection{Rationale}
+
+True XIP mode is not adopted for the following reasons:
+
+\begin{enumerate}
+  \item \textbf{The I-Cache already provides the XIP benefit.}
+    Once a cache line is loaded, all subsequent accesses to it cost 1
+    clock cycle.
+    The amortised QSPI overhead per instruction is negligible at
+    realistic hit rates ($>$90\,\%).
+  \item \textbf{Sequential access is not guaranteed.}
+    A 4-way set-associative cache evicts and reloads lines at
+    non-sequential addresses.
+    True XIP's main advantage (no repeated opcode/address) applies
+    only to sequential reads; for random-address cache refills its
+    benefit is minimal.
+  \item \textbf{Simpler QSPI controller.}
+    Indirect XIP requires no Flash-mode-bit management, no
+    continuous-read entry/exit sequence, and no special handling for
+    the transition back from XIP mode (required before write/erase
+    operations in True XIP).
+  \item \textbf{Lower power between cache misses.}
+    With CS\# de-asserted between bursts the Flash enters standby
+    mode automatically, reducing leakage current.
+\end{enumerate}
+
+\subsubsection{QSPI Command Sequence per Cache Miss}
+
+On each cache miss the QSPI controller executes the following sequence
+on the SPI bus:
+
+\begin{enumerate}
+  \item Assert CS\# (chip select, active-low).
+  \item Send read opcode on IO0 (single-bit SPI).
+  \item Send 24-bit (3-byte) Flash address on IO0; address is taken
+    directly from \texttt{ARADDR[24:0]} (for Flash devices up to 16\,MB)
+    or \texttt{ARADDR[31:0]} for larger devices.
+    The lower 5 bits are always zero (cache-line aligned burst).
+  \item Send dummy cycles (device-specific; typically 8 clock cycles
+    for Fast Read, 6--8 for Quad Fast Read).
+  \item Receive 32 bytes of read data, output on IO0 (Fast Read) or
+    IO0--IO3 simultaneously (Quad Fast Read).
+    Data is returned to the AXI4 R channel as 4 beats of 64 bits,
+    LSB-first within each beat.
+  \item De-assert CS\#.
+\end{enumerate}
+
+\begin{table}[H]
+\caption{Supported QSPI Read Commands}
+\label{tab:asQspiCmd}
+\centering
+\begin{tabularx}{\textwidth}{|l |l |l |l |X|}
+  \hline
+  Command & Opcode & Mode & Throughput & Notes \\
+  \hline
+  \hline
+  Fast Read        & \texttt{0x0B} & 1-bit SPI  & Low    &
+    Fallback; maximum QSPI clock limited by Flash spec \\
+  \hline
+  Quad Fast Read   & \texttt{0x6B} & 4-bit QSPI & High   &
+    \textbf{Recommended}; data on IO0--IO3 in parallel;
+    requires QUAD enable bit set in Flash status register \\
+  \hline
+\end{tabularx}
+\end{table}
+
+The Quad Fast Read command (\texttt{0x6B}) is recommended because it
+reduces the data phase from 256 QSPI clock cycles (single-bit) to
+64 QSPI clock cycles (four-bit), significantly lowering cache-miss
+latency.
+
+\subsubsection{Address Mapping}
+
+The AXI4 \texttt{ARADDR} is used directly as the Flash physical address:
+
+\[
+  \texttt{Flash\_Addr}[24:5] = \texttt{ARADDR}[24:5], \quad
+  \texttt{Flash\_Addr}[4:0] = 5'b00000
+\]
+
+The five least-significant address bits are always zero because the
+cache controller aligns all burst requests to the 32-byte cache-line
+boundary before issuing the AXI4 transaction.
+
+\subsubsection{Latency Estimate}
+
+Table~\ref{tab:asQspiLat} estimates the QSPI bus cycles and system
+clock cycles consumed by a single cache-line fill using Quad Fast Read.
+Actual values depend on the Flash device datasheet and the QSPI clock
+divider setting.
+
+\begin{table}[H]
+\caption{Cache-Line Fill Latency Estimate (Quad Fast Read, \texttt{0x6B})}
+\label{tab:asQspiLat}
+\centering
+\begin{tabularx}{\textwidth}{|l |l |X|}
+  \hline
+  Phase & QSPI clocks & Notes \\
+  \hline
+  \hline
+  CS\# assert + opcode  &  8 & 8-bit opcode on IO0 \\
+  \hline
+  Address               & 24 & 24-bit address on IO0 \\
+  \hline
+  Dummy cycles          &  8 & Device-specific; 8 typical for \texttt{0x6B} \\
+  \hline
+  Data (32\,bytes)      & 64 & 256 bits $\div$ 4 (quad) = 64 QSPI clocks \\
+  \hline
+  CS\# de-assert        &  2 & Minimum CS\# high time (device-specific) \\
+  \hline
+  \textbf{Total}        & \textbf{106} & Per cache miss \\
+  \hline
+\end{tabularx}
+\end{table}
+
+At an example QSPI clock of 25\,MHz and system clock of 10\,MHz:
+\[
+  t_\text{miss} = \frac{106}{25\,\text{MHz}} = 4.24\,\mu\text{s}
+  \;\widehat{=}\; 42\;\text{system clock cycles}.
+\]
+This is consistent with the ``$\gg$10 cycles'' estimate in
+Table~\ref{tab:asMemHierarchy}.
+The exact QSPI clock frequency and divider ratio are to be determined
+once the target NOR Flash device is selected.
+
+\subsubsection{NOR Flash Device Requirements}
+
+The selected NOR Flash must support:
+
+\begin{itemize}
+  \item \textbf{Quad Fast Read (0x6B)} with up to 8 dummy cycles.
+  \item \textbf{3-byte address mode} (24-bit, supports Flash up to 16\,MB);
+    or 4-byte mode if a larger device is required.
+  \item \textbf{AXI4 burst compatibility:} the device must sustain
+    continuous 4-bit output for 64 QSPI clocks without inserting wait
+    states.
+  \item \textbf{3.3\,V supply} (matching XO035 I/O voltage).
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Open Items and Refinements}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -1796,10 +1963,13 @@ Sections~\ref{subsec:iBusIf} and~\ref{subsec:dBusIf}.
            signals added to cache interfaces. BRESP not used (no AXI4 writes).
            See Section~\ref{subsec:axi4Error}. & -- \\
   \hline
-  MEM-07 & QSPI XIP mode vs.\ cache-miss-driven burst: clarify whether the
-           QSPI controller operates in Execute-In-Place (XIP) mode and the
-           cache controller issues normal read bursts, or whether a different
-           command sequence is required per miss. & TBD \\
+  MEM-07 & \textbf{[RESOLVED]} Cache-miss-driven burst (indirect XIP) chosen.
+           True XIP (Continuous Read mode) not adopted: I-Cache provides
+           the XIP benefit, random-address refills gain little from True XIP,
+           and the QSPI controller stays simpler.
+           Quad Fast Read (\texttt{0x6B}) recommended; 106 QSPI clocks per
+           32-byte fill ($\approx$42 system clocks at 25\,MHz QSPI / 10\,MHz system).
+           See Section~\ref{subsec:qspiMode}. & -- \\
   \hline
 \end{tabularx}
 \end{table}
