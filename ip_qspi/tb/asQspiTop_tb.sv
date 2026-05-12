@@ -127,25 +127,29 @@ module asQspiTop_tb;
     input  logic [3:0]  id,
     output logic [63:0] beat0, beat1, beat2, beat3
   );
-    // Present AR channel
+    // Present AR channel at negedge (setup before the sampling posedge)
     @(negedge clk_i);
     axi_arvalid=1; axi_araddr=addr; axi_arid=id;
     axi_arlen=4'd3; axi_arsize=3'd3; axi_arburst=2'b01;
-    // Wait for ARREADY (Vivado xsim: while instead of do-while)
-    @(posedge clk_i); #1;
-    while (!axi_arready) begin @(posedge clk_i); #1; end
+    // Wait for ARREADY: sample at negedge (combinatorial, before the posedge
+    // that captures the handshake).  Checking at posedge+#1 (after NBA) would
+    // see arready=0 because the DUT already advanced to AXI_KICK — deadlock.
+    while (!axi_arready) begin @(posedge clk_i); @(negedge clk_i); end
+    @(posedge clk_i);              // AR handshake captured by DUT on this edge
     @(negedge clk_i); axi_arvalid=0;
 
     // Assert RREADY and collect 4 beats
     axi_rready=1;
-    // Beat 0 – wait for first RVALID
+    // Beat 0 – wait for first RVALID (sampled at posedge+#1, after NBA)
     @(posedge clk_i); #1;
     while (!axi_rvalid) begin @(posedge clk_i); #1; end
     beat0 = axi_rdata;
     @(posedge clk_i); #1; beat1 = axi_rdata;
     @(posedge clk_i); #1; beat2 = axi_rdata;
     @(posedge clk_i); #1; beat3 = axi_rdata;
-    // RLAST should be asserted on beat3 – checked in the test body
+    // Hold RREADY one extra cycle so the last-beat handshake (beat_cnt=3)
+    // completes and AXI_RESP transitions to AXI_IDLE.
+    @(posedge clk_i);
     @(negedge clk_i); axi_rready=0;
   endtask
 
