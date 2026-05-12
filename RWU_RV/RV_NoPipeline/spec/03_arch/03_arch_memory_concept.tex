@@ -665,6 +665,10 @@ On a miss the I-Cache controller:
   \hline
   \texttt{RESPOND}   & First word of filled line presented to CPU; stall de-asserted \\
   \hline
+  \texttt{ERR}       & AXI4 RRESP $\neq$ OKAY detected during FILL: valid bit not
+                       set; \texttt{ic\_err\_o} pulsed high for one cycle;
+                       return to IDLE \\
+  \hline
   \texttt{FLUSH}     & Invalidation: iterates set counter 0\ldots31; writes
                        \texttt{valid=0}, \texttt{plru=0} to tag SRAM each cycle;
                        asserts \texttt{ic\_flush\_done\_o} after 32 cycles \\
@@ -689,7 +693,7 @@ and dispatches to one of two paths:
   \item \textbf{Flash region (cacheable, read-only):} the request goes
     through the tag-lookup / fill pipeline described below.
     Stores to the Flash region are not supported; the cache controller
-    asserts an error signal (behaviour TBD, see MEM-06).
+    asserts \texttt{dc\_err\_o} and raises a Load Access Fault (see Section~\ref{subsec:axi4Error}).
   \item \textbf{Scratchpad region (uncacheable, read-write):} the cache is
     bypassed entirely.
     The controller drives the Scratchpad SRAM interface directly with the
@@ -759,6 +763,10 @@ controller complexity significantly.
   \texttt{BYPASS}     & Scratchpad region: driving Scratchpad SRAM interface directly;
                         read data or write acknowledgement returned to CPU after 1 cycle \\
   \hline
+  \texttt{ERR}        & AXI4 RRESP $\neq$ OKAY detected during FILL: valid bit not
+                        set; \texttt{dc\_err\_o} pulsed high for one cycle;
+                        return to IDLE \\
+  \hline
   \texttt{FLUSH}      & Invalidation: iterates set counter 0\ldots31; writes
                         \texttt{valid=0}, \texttt{plru=0} to tag SRAM each cycle;
                         asserts \texttt{dc\_flush\_done\_o} after 32 cycles \\
@@ -801,9 +809,13 @@ to the I-Cache.
   \hline
   \texttt{ic\_flush\_i}      & out & 1  & Pulse high for one cycle to trigger full cache invalidation (FENCE.I) \\
   \hline
-  \texttt{ic\_stall\_o}      & in  & 1  & High while a cache miss or flush is in progress; CPU must freeze PC \\
+  \texttt{ic\_stall\_o}      & in  & 1  & High while a cache miss, flush, or error recovery is in progress \\
   \hline
   \texttt{ic\_flush\_done\_o}& in  & 1  & Pulsed high for one cycle when flush is complete \\
+  \hline
+  \texttt{ic\_err\_o}        & in  & 1  & Pulsed high for one cycle on AXI4 read error;
+                                          CPU raises Instruction Access Fault (\texttt{mcause}=1,
+                                          \texttt{mtval}=\texttt{ic\_addr\_i}) \\
   \hline
   \texttt{ic\_rdata\_o}      & in  & 32 & Instruction word returned by the I-Cache \\
   \hline
@@ -820,12 +832,13 @@ interface as_icache_if (input logic clk_i,
   logic        ic_flush;
   logic        ic_stall;
   logic        ic_flush_done;
+  logic        ic_err;
   logic [31:0] ic_rdata;
   logic        ic_rvalid;
   modport cpu  (output ic_addr, ic_req, ic_flush,
-                input  ic_stall, ic_flush_done, ic_rdata, ic_rvalid);
+                input  ic_stall, ic_flush_done, ic_err, ic_rdata, ic_rvalid);
   modport cache(input  ic_addr, ic_req, ic_flush,
-                output ic_stall, ic_flush_done, ic_rdata, ic_rvalid);
+                output ic_stall, ic_flush_done, ic_err, ic_rdata, ic_rvalid);
 endinterface
 \end{verbatim}
 
@@ -858,9 +871,13 @@ D-Cache.
   \hline
   \texttt{dc\_flush\_i}      & out & 1  & Pulse high for one cycle to trigger full D-Cache invalidation (FENCE.I) \\
   \hline
-  \texttt{dc\_stall\_o}      & in  & 1  & High while cache miss, scratchpad access, or flush is in progress \\
+  \texttt{dc\_stall\_o}      & in  & 1  & High while cache miss, scratchpad access, flush, or error recovery is in progress \\
   \hline
   \texttt{dc\_flush\_done\_o}& in  & 1  & Pulsed high for one cycle when flush is complete \\
+  \hline
+  \texttt{dc\_err\_o}        & in  & 1  & Pulsed high for one cycle on AXI4 read error;
+                                          CPU raises Load Access Fault (\texttt{mcause}=5,
+                                          \texttt{mtval}=\texttt{dc\_addr\_i}) \\
   \hline
   \texttt{dc\_rdata\_o}      & in  & 64 & Read data returned to CPU (load) \\
   \hline
@@ -881,14 +898,15 @@ interface as_dcache_if (input logic clk_i,
   logic        dc_flush;
   logic        dc_stall;
   logic        dc_flush_done;
+  logic        dc_err;
   logic [63:0] dc_rdata;
   logic        dc_rvalid;
   modport cpu  (output dc_addr, dc_req, dc_wr, dc_size,
                        dc_wdata, dc_wstrb, dc_flush,
-                input  dc_stall, dc_flush_done, dc_rdata, dc_rvalid);
+                input  dc_stall, dc_flush_done, dc_err, dc_rdata, dc_rvalid);
   modport cache(input  dc_addr, dc_req, dc_wr, dc_size,
                        dc_wdata, dc_wstrb, dc_flush,
-                output dc_stall, dc_flush_done, dc_rdata, dc_rvalid);
+                output dc_stall, dc_flush_done, dc_err, dc_rdata, dc_rvalid);
 endinterface
 \end{verbatim}
 
@@ -1544,6 +1562,193 @@ No cache-flush or cache-snoop signal is required from the DMA engine;
 the software protocol (Section above) is sufficient.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{AXI4 Error Handling}
+\label{subsec:axi4Error}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Overview}
+
+The AXI4 read response channel (\texttt{RRESP[1:0]}) carries a completion
+status from the QSPI controller back to the cache controllers.
+A non-OKAY response indicates that the underlying NOR Flash transaction
+failed (e.g.\ timeout, command error, or address out of Flash range).
+
+In the RWU-RV64I design the AXI4 write channels (AW, W, B) are eliminated
+from the cache controllers (MEM-01); \texttt{BRESP} is therefore not
+observed and requires no handling.
+
+AXI4 errors are surfaced to software as standard
+\textbf{RISC-V Machine-Mode Exceptions} following the Privileged
+Architecture specification.
+This is the correct approach: the CPU already has exception infrastructure
+(for illegal instructions, etc.) and the trap handler can log, retry, or
+halt in a well-defined way.
+
+\subsubsection{AXI4 Response Codes}
+
+\begin{table}[H]
+\caption{AXI4 RRESP Codes Handled by Cache Controllers}
+\label{tab:asRresp}
+\centering
+\begin{tabularx}{\textwidth}{|l |l |l |X|}
+  \hline
+  \texttt{RRESP} & Name & Used? & Action \\
+  \hline
+  \hline
+  2'b00 & OKAY   & Yes & Normal completion; data written to cache SRAM \\
+  \hline
+  2'b01 & EXOKAY & No  & Exclusive access OK; not used (no LR/SC in this design) \\
+  \hline
+  2'b10 & SLVERR & Yes & Slave error (QSPI / Flash fault); triggers exception \\
+  \hline
+  2'b11 & DECERR & Yes & Decode error (address unmapped); triggers exception \\
+  \hline
+\end{tabularx}
+\end{table}
+
+\subsubsection{Exception Mapping}
+
+Table~\ref{tab:asAxi4Exc} maps AXI4 error events to RISC-V exception
+causes.
+
+\begin{table}[H]
+\caption{AXI4 Error to RISC-V Exception Mapping}
+\label{tab:asAxi4Exc}
+\centering
+\begin{tabularx}{\textwidth}{|l |l |l |l |X|}
+  \hline
+  Cache & AXI4 signal & \texttt{mcause} & Exception name & \texttt{mtval} \\
+  \hline
+  \hline
+  I-Cache & \texttt{RRESP} $\neq$ OKAY & 1 & Instruction Access Fault &
+    Faulting fetch address (\texttt{ic\_addr\_i} at time of miss) \\
+  \hline
+  D-Cache & \texttt{RRESP} $\neq$ OKAY & 5 & Load Access Fault &
+    Faulting load address (\texttt{dc\_addr\_i} at time of miss) \\
+  \hline
+\end{tabularx}
+\end{table}
+
+\subsubsection{Error Detection in the Cache Controllers}
+
+Both cache controllers monitor \texttt{RRESP} on every beat of the R
+channel during the \texttt{FILL} state.
+If any beat carries \texttt{RRESP} $\neq$ \texttt{2'b00}:
+
+\begin{enumerate}
+  \item The cache controller immediately stops writing to the data SRAM.
+  \item The valid bit for the partially filled line is \textbf{not} set
+    (the line remains invalid).
+  \item The controller transitions to the new \texttt{ERR} state.
+  \item In \texttt{ERR}, the controller pulses the error output
+    (\texttt{ic\_err\_o} or \texttt{dc\_err\_o}) for one cycle and
+    asserts the corresponding stall signal for that cycle.
+  \item The controller returns to \texttt{IDLE}.
+\end{enumerate}
+
+The CPU samples the error output on the same cycle as the stall
+de-assertion, latches the faulting address, and raises the appropriate
+exception.
+
+\subsubsection{Updated Cache Controller FSMs}
+
+The \texttt{ERR} state is added to both I-Cache and D-Cache FSMs.
+
+\begin{table}[H]
+\caption{ERR State -- I-Cache and D-Cache (identical behaviour)}
+\label{tab:asErrState}
+\centering
+\begin{tabularx}{\textwidth}{|l |X|}
+  \hline
+  Condition & Action \\
+  \hline
+  \hline
+  Entry condition &
+    Any AXI4 R-channel beat with \texttt{RRESP} $\neq$ \texttt{2'b00}
+    during \texttt{FILL} \\
+  \hline
+  In \texttt{ERR} (1 cycle) &
+    Do not update tag SRAM valid bit.
+    Assert \texttt{*\_err\_o} for one cycle.
+    Assert \texttt{*\_stall\_o} for the same cycle. \\
+  \hline
+  Exit condition &
+    Unconditional; return to \texttt{IDLE} after one cycle \\
+  \hline
+\end{tabularx}
+\end{table}
+
+\subsubsection{Updated Cache Interface Signals}
+
+One error output signal is added to each cache interface.
+
+\begin{table}[H]
+\caption{Error Signals Added to Cache Interfaces}
+\label{tab:asErrSig}
+\centering
+\begin{tabularx}{\textwidth}{|l |l |l |l |X|}
+  \hline
+  Signal & Interface & Dir (CPU) & Width & Description \\
+  \hline
+  \hline
+  \texttt{ic\_err\_o} & \texttt{as\_icache\_if} & in & 1 &
+    Pulsed high for one cycle on an I-Cache AXI4 read error;
+    CPU raises Instruction Access Fault (\texttt{mcause}=1) \\
+  \hline
+  \texttt{dc\_err\_o} & \texttt{as\_dcache\_if} & in & 1 &
+    Pulsed high for one cycle on a D-Cache AXI4 read error;
+    CPU raises Load Access Fault (\texttt{mcause}=5) \\
+  \hline
+\end{tabularx}
+\end{table}
+
+\subsubsection{CPU Exception Handling Sequence}
+
+When the CPU samples \texttt{ic\_err\_o} or \texttt{dc\_err\_o}:
+
+\begin{enumerate}
+  \item Save the current PC to \texttt{mepc}.
+  \item Write the exception cause to \texttt{mcause}
+    (1 for I-Cache, 5 for D-Cache).
+  \item Write the faulting address to \texttt{mtval}
+    (last value driven on \texttt{ic\_addr\_i} or \texttt{dc\_addr\_i}).
+  \item Clear \texttt{mstatus.MIE} (disable interrupts).
+  \item Jump to \texttt{mtvec} (trap vector).
+\end{enumerate}
+
+The trap handler at \texttt{mtvec} may:
+
+\begin{itemize}
+  \item \textbf{Halt:} for a non-recoverable Flash fault this is the
+    correct default action (e.g.\ output error code via UART/GPIO,
+    then \texttt{wfi}).
+  \item \textbf{Retry:} re-execute the faulting instruction
+    (\texttt{mret} after optionally re-initialising the QSPI controller).
+    Appropriate for transient QSPI timeouts.
+  \item \textbf{Substitute:} fill a scratchpad buffer with alternative
+    data, remap the faulting address (if an MPU is present), and
+    \texttt{mret}.
+    Advanced; not required for the first tapeout.
+\end{itemize}
+
+\subsubsection{Updated SystemVerilog Interfaces}
+
+\begin{verbatim}
+// as_icache_if additions:
+logic ic_err;       // new: AXI4 read error → Instruction Access Fault
+modport cpu  (..., input ic_err);
+modport cache(..., output ic_err);
+
+// as_dcache_if additions:
+logic dc_err;       // new: AXI4 read error → Load Access Fault
+modport cpu  (..., input dc_err);
+modport cache(..., output dc_err);
+\end{verbatim}
+
+Full updated interface definitions are in
+Sections~\ref{subsec:iBusIf} and~\ref{subsec:dBusIf}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Open Items and Refinements}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -1584,8 +1789,12 @@ the software protocol (Section above) is sufficient.
            With scratchpad and Flash regions both well within a 4\,GB space
            this is confirmed sufficient; finalise when memory map is defined. & AS: 32\,bits -- ok \\
   \hline
-  MEM-06 & AXI4 error handling: define CPU-visible trap or interrupt behaviour
-           on RRESP/BRESP\,$\neq$\,OKAY. & TBD \\
+  MEM-06 & \textbf{[RESOLVED]} RRESP $\neq$ OKAY mapped to RISC-V exceptions:
+           I-Cache~$\rightarrow$ Instruction Access Fault (\texttt{mcause}=1),
+           D-Cache~$\rightarrow$ Load Access Fault (\texttt{mcause}=5).
+           ERR state added to both FSMs; \texttt{ic\_err\_o}/\texttt{dc\_err\_o}
+           signals added to cache interfaces. BRESP not used (no AXI4 writes).
+           See Section~\ref{subsec:axi4Error}. & -- \\
   \hline
   MEM-07 & QSPI XIP mode vs.\ cache-miss-driven burst: clarify whether the
            QSPI controller operates in Execute-In-Place (XIP) mode and the
