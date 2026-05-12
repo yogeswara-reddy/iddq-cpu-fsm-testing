@@ -88,6 +88,41 @@ module as_qspi_top #(
 );
 
   // ---------------------------------------------------------------------------
+  // QSPI register map: byte offsets and reset values
+  // Defined locally so this module compiles with any as_pack.sv variant.
+  // ---------------------------------------------------------------------------
+  localparam int OFF_ID      =   0;
+  localparam int OFF_CTRL    =   8;
+  localparam int OFF_CMD     =  16;
+  localparam int OFF_ADDR    =  24;
+  localparam int OFF_LEN     =  32;
+  localparam int OFF_DUMMY   =  40;
+  localparam int OFF_CLKDIV  =  48;
+  localparam int OFF_TIMEOUT =  56;
+  localparam int OFF_ISR     =  64;
+  localparam int OFF_RIS     =  72;
+  localparam int OFF_IMSC    =  80;
+  localparam int OFF_MIS     =  88;
+  localparam int OFF_ICR     =  96;
+  localparam int OFF_RXDATA  = 104;
+  localparam int OFF_TXDATA  = 112;
+  localparam int OFF_FIFOSTAT= 120;
+  localparam int OFF_XIPMODE = 128;
+  localparam int OFF_STATUS  = 136;
+
+  localparam logic [63:0] RST_ID      = 64'h00000000_00000010;
+  localparam logic [63:0] RST_CTRL    = 64'h00000000_00000000;
+  localparam logic [63:0] RST_CMD     = 64'h00000000_0000006B; // 0x6B Quad Fast Read
+  localparam logic [63:0] RST_ADDR    = 64'h00000000_00000000;
+  localparam logic [63:0] RST_LEN     = 64'h00000000_00000008; // 8 bytes
+  localparam logic [63:0] RST_DUMMY   = 64'h00000000_00000008; // 8 dummy cycles
+  localparam logic [63:0] RST_CLKDIV  = 64'h00000000_00000004; // CLKDIV=4
+  localparam logic [63:0] RST_TIMEOUT = 64'h00000000_00000000;
+  localparam logic [63:0] RST_XIPMODE = 64'h00000000_000000A0; // Winbond mode byte
+  localparam logic [63:0] RST_IMSC    = 64'h00000000_00000000;
+  localparam logic [63:0] RST_RIS     = 64'h00000000_00000000;
+
+  // ---------------------------------------------------------------------------
   // BPI: Wishbone ↔ internal bus
   // ---------------------------------------------------------------------------
   logic [QSPI_ADDR_WIDTH-1:0] addr_s;
@@ -121,19 +156,19 @@ module as_qspi_top #(
   logic wr_isr_s, wr_icr_s, wr_txdata_s;
   logic rd_rxdata_s;
 
-  assign wr_ctrl_s    = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_ctrl_reg_addr_offs_c));
-  assign wr_cmd_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_cmd_reg_addr_offs_c));
-  assign wr_addr_s    = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_addr_reg_addr_offs_c));
-  assign wr_len_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_len_reg_addr_offs_c));
-  assign wr_dummy_s   = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_dummy_reg_addr_offs_c));
-  assign wr_clkdiv_s  = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_clkdiv_reg_addr_offs_c));
-  assign wr_timeout_s = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_timeout_reg_addr_offs_c));
-  assign wr_xipmode_s = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_xip_reg_addr_offs_c));
-  assign wr_imsc_s    = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_imsc_reg_addr_offs_c));
-  assign wr_isr_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_isr_reg_addr_offs_c));
-  assign wr_icr_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_icr_reg_addr_offs_c));
-  assign rd_rxdata_s  = rd_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_rx_reg_addr_offs_c));
-  assign wr_txdata_s  = wr_s && (addr_s == QSPI_ADDR_WIDTH'(qspi_tx_reg_addr_offs_c));
+  assign wr_ctrl_s    = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_CTRL));
+  assign wr_cmd_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_CMD));
+  assign wr_addr_s    = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_ADDR));
+  assign wr_len_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_LEN));
+  assign wr_dummy_s   = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_DUMMY));
+  assign wr_clkdiv_s  = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_CLKDIV));
+  assign wr_timeout_s = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_TIMEOUT));
+  assign wr_xipmode_s = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_XIPMODE));
+  assign wr_imsc_s    = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_IMSC));
+  assign wr_isr_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_ISR));
+  assign wr_icr_s     = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_ICR));
+  assign rd_rxdata_s  = rd_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_RXDATA));
+  assign wr_txdata_s  = wr_s && (addr_s == QSPI_ADDR_WIDTH'(OFF_TXDATA));
 
   // ---------------------------------------------------------------------------
   // Configuration registers
@@ -150,43 +185,43 @@ module as_qspi_top #(
   logic [reg_width-1:0] imsc_reg_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i) id_reg_s <= qspi_id_reg_addr_rst_c;
+    if (rst_i) id_reg_s <= RST_ID;
 
   // CTRL: mask out the volatile bits (start[3], rx_flush[2], tx_flush[1]) on write
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)         ctrl_reg_s <= qspi_ctrl_reg_addr_rst_c;
+    if (rst_i)          ctrl_reg_s <= RST_CTRL;
     else if (wr_ctrl_s) ctrl_reg_s <= data_wr_s & ~64'h0E;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)        cmd_reg_s <= qspi_cmd_reg_addr_rst_c;
+    if (rst_i)         cmd_reg_s <= RST_CMD;
     else if (wr_cmd_s) cmd_reg_s <= data_wr_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)         addr_reg_s <= qspi_addr_reg_rst_c;
+    if (rst_i)          addr_reg_s <= RST_ADDR;
     else if (wr_addr_s) addr_reg_s <= data_wr_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)        len_reg_s <= qspi_len_reg_rst_c;
+    if (rst_i)         len_reg_s <= RST_LEN;
     else if (wr_len_s) len_reg_s <= data_wr_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)          dummy_reg_s <= qspi_dummy_reg_rst_c;
+    if (rst_i)           dummy_reg_s <= RST_DUMMY;
     else if (wr_dummy_s) dummy_reg_s <= data_wr_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)           clkdiv_reg_s <= qspi_clkdiv_reg_rst_c;
+    if (rst_i)            clkdiv_reg_s <= RST_CLKDIV;
     else if (wr_clkdiv_s) clkdiv_reg_s <= data_wr_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)            timeout_reg_s <= qspi_timeout_reg_rst_c;
+    if (rst_i)             timeout_reg_s <= RST_TIMEOUT;
     else if (wr_timeout_s) timeout_reg_s <= data_wr_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)            xipmode_reg_s <= qspi_xip_reg_rst_c;
+    if (rst_i)             xipmode_reg_s <= RST_XIPMODE;
     else if (wr_xipmode_s) xipmode_reg_s <= data_wr_s;
 
   always_ff @(posedge clk_i, posedge rst_i)
-    if (rst_i)         imsc_reg_s <= qspi_imsc_reg_rst_c;
+    if (rst_i)          imsc_reg_s <= RST_IMSC;
     else if (wr_imsc_s) imsc_reg_s <= data_wr_s;
 
   // ---------------------------------------------------------------------------
@@ -455,7 +490,7 @@ module as_qspi_top #(
 
   always_ff @(posedge clk_i, posedge rst_i) begin
     if (rst_i) begin
-      ris_reg_s <= qspi_ris_reg_rst_c;
+      ris_reg_s <= RST_RIS;
     end else begin
       if      (wr_icr_s && data_wr_s[0]) ris_reg_s[0] <= 1'b0;
       else if (wr_isr_s && data_wr_s[0]) ris_reg_s[0] <= 1'b1;
@@ -505,25 +540,25 @@ module as_qspi_top #(
   // ---------------------------------------------------------------------------
   always_comb begin
     case (addr_s)
-      QSPI_ADDR_WIDTH'(qspi_id_reg_addr_offs_c)      : data_rd_s = id_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_ctrl_reg_addr_offs_c)    : data_rd_s = ctrl_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_cmd_reg_addr_offs_c)     : data_rd_s = cmd_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_addr_reg_addr_offs_c)    : data_rd_s = addr_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_len_reg_addr_offs_c)     : data_rd_s = len_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_dummy_reg_addr_offs_c)   : data_rd_s = dummy_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_clkdiv_reg_addr_offs_c)  : data_rd_s = clkdiv_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_timeout_reg_addr_offs_c) : data_rd_s = timeout_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_isr_reg_addr_offs_c)     : data_rd_s = '0;   // write-only
-      QSPI_ADDR_WIDTH'(qspi_ris_reg_addr_offs_c)     : data_rd_s = ris_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_imsc_reg_addr_offs_c)    : data_rd_s = imsc_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_mis_reg_addr_offs_c)     : data_rd_s = mis_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_icr_reg_addr_offs_c)     : data_rd_s = '0;   // write-only
-      QSPI_ADDR_WIDTH'(qspi_rx_reg_addr_offs_c)      : data_rd_s = rx_empty_s ? '0 : rx_data_rd_s;
-      QSPI_ADDR_WIDTH'(qspi_tx_reg_addr_offs_c)      : data_rd_s = '0;   // write-only
-      QSPI_ADDR_WIDTH'(qspi_fifost_reg_addr_offs_c)  : data_rd_s = fifostat_s;
-      QSPI_ADDR_WIDTH'(qspi_xip_reg_addr_offs_c)     : data_rd_s = xipmode_reg_s;
-      QSPI_ADDR_WIDTH'(qspi_stat_reg_addr_offs_c)    : data_rd_s = status_s;
-      default                                        : data_rd_s = '0;
+      QSPI_ADDR_WIDTH'(OFF_ID)      : data_rd_s = id_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_CTRL)    : data_rd_s = ctrl_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_CMD)     : data_rd_s = cmd_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_ADDR)    : data_rd_s = addr_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_LEN)     : data_rd_s = len_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_DUMMY)   : data_rd_s = dummy_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_CLKDIV)  : data_rd_s = clkdiv_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_TIMEOUT) : data_rd_s = timeout_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_ISR)     : data_rd_s = '0;   // write-only
+      QSPI_ADDR_WIDTH'(OFF_RIS)     : data_rd_s = ris_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_IMSC)    : data_rd_s = imsc_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_MIS)     : data_rd_s = mis_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_ICR)     : data_rd_s = '0;   // write-only
+      QSPI_ADDR_WIDTH'(OFF_RXDATA)  : data_rd_s = rx_empty_s ? '0 : rx_data_rd_s;
+      QSPI_ADDR_WIDTH'(OFF_TXDATA)  : data_rd_s = '0;   // write-only
+      QSPI_ADDR_WIDTH'(OFF_FIFOSTAT): data_rd_s = fifostat_s;
+      QSPI_ADDR_WIDTH'(OFF_XIPMODE) : data_rd_s = xipmode_reg_s;
+      QSPI_ADDR_WIDTH'(OFF_STATUS)  : data_rd_s = status_s;
+      default                       : data_rd_s = '0;
     endcase
   end
 
