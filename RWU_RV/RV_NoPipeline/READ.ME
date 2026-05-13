@@ -44,7 +44,7 @@ rm -rf build
 cmake -S . -B build -DSIMULATOR=xsim
 cmake --build build --target collect_errors
 
-- Single Verilator simulation without wave
+- Regression Verilator simulation without wave
 ---------------------------------------------
 rm -rf build
 cmake -S . -B build -DSIMULATOR=verilator
@@ -77,119 +77,31 @@ project/
 │   ├── branch.mem
 │   └── ...
 
-- Generate .mem
-- Define Pass/Fail:
-0x00001000 = PASS
-0x00001008 = FAIL
-- Write test-case: tests/add.S
-.section .text
-.global _start
+Speicherhierarchie:
+===================
+Die Hierarchie hat keine Zwischenebene zwischen Cache und NOR-Flash:
 
-_start:
+  CPU
+   ├─ I-Cache (Controller + Tag-SRAM + Data-SRAM)  ← L1, on-chip
+   └─ D-Cache (Controller + Tag-SRAM + Data-SRAM)  ← L1, on-chip
+        ├─ Flash-Region (cacheable) → Miss → AXI4 → QSPI → NOR Flash
+        └─ Scratchpad-Region (uncacheable) → Bypass → Scratchpad SRAM
 
-    li x1, 5
-    li x2, 7
-    add x3, x1, x2
+  Was die I-SRAM / D-SRAM sind
 
-    li x4, 12
-    bne x3, x4, fail
+  Die "I-SRAM Macro" und "D-SRAM Macro" im Block-Diagramm sind die Datenspeicher des Caches selbst — also Tag-SRAM + Data-SRAM für I-Cache
+  bzw. D-Cache. Das sind keine separate Hierarchieebene, sondern die Cache-Zellen auf dem Chip.
 
-pass:
-    li x5, 0x1000
-    li x6, 1
-    sd x6, 0(x5)
+  Der Scratchpad ist kein Zwischen-Cache
 
-loop:
-    j loop
+  Der Scratchpad SRAM ist kein L2 zwischen Cache und Flash, sondern ein direkt adressierter Bereich für R/W-Daten (Stack, Heap, .data, .bss).
+   Der D-Cache-Controller erkennt anhand der Adresse: Flash-Region → Cache-Pfad; Scratchpad-Region → Bypass direkt zum SRAM.
 
-fail:
-    li x5, 0x1008
-    li x6, 0
-    sd x6, 0(x5)
+  Falls Sie eine Zwischenebene wollen
 
-    j fail
+  Das wäre ein klassisches L2-Cache oder Tightly Coupled Memory (TCM)-Konzept. Das wurde gestern bewusst weggelassen, weil:
+  - Ein echter L2 erhebliche Chip-Fläche kostet (X-Fab XO035 / 350 nm)
+  - NOR-Flash via QSPI hat langen Latenz-Overhead, aber mit dem 4-beat AXI4 Burst (32 B pro Miss) amortisiert sich das
+  - Der Scratchpad übernimmt die Rolle des "schnellen R/W-Speichers"
 
-- Assemble => .mem => tests/add.mem
-- cocotb Testbench: sim/test_cpu.py
-import cocotb
-from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
-
-PASS_ADDR = 0x1000
-FAIL_ADDR = 0x1008
-
-@cocotb.test()
-async def test_add(dut):
-
-    # Core Clock
-    cocotb.start_soon(
-        Clock(dut.clk_i, 10, units="ns").start()
-    )
-
-    # JTAG clock optional
-    cocotb.start_soon(
-        Clock(dut.tck_i, 100, units="ns").start()
-    )
-
-    # Reset
-    dut.rst_i.value = 1
-    dut.trst_i.value = 1
-
-    dut.tms_i.value = 0
-    dut.tdi_i.value = 0
-
-    for _ in range(20):
-        await RisingEdge(dut.clk_i)
-
-    dut.rst_i.value = 0
-    dut.trst_i.value = 0
-
-    # Simulation
-    for cycle in range(5000):
-
-        await RisingEdge(dut.clk_i)
-
-        we   = int(dut.wbdwe_s.value)
-        stb  = int(dut.wbdstDMem_s.value)
-
-        if we and stb:
-
-            addr = int(dut.dBusAddr_s.value)
-            data = int(dut.dBusDataWr_s.value)
-
-            print(f"WRITE addr=0x{addr:x} data=0x{data:x}")
-
-            if addr == PASS_ADDR:
-                cocotb.log.info("TEST PASSED")
-                return
-
-            if addr == FAIL_ADDR:
-                raise Exception("TEST FAILED")
-
-    raise Exception("TIMEOUT")
-
-- Verilator Public Signals:
-logic [63:0] dBusAddr_s /* verilator public */; OR
-im Makefile: EXTRA_ARGS += --public-flat-rw
-
-- Makefile: sim/Makefile
-TOPLEVEL_LANG = verilog
-SIM = verilator
-
-TOPLEVEL = as_top_mem
-MODULE = test_cpu
-
-VERILOG_SOURCES = \
-  ../rtl/as_top_mem.sv
-
-EXTRA_ARGS += --trace
-EXTRA_ARGS += --sv
-EXTRA_ARGS += --public-flat-rw
-
-include $(shell cocotb-config --makefiles)/Makefile.sim
-
-- Start:
-cd sim
-make
-
-
+  Möchten Sie das Konzept überdenken und z.B. ein internes SRAM als L2 (read-only, für Code-Abschnitte) ergänzen?

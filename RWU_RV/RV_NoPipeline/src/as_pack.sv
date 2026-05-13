@@ -253,6 +253,133 @@ package as_pack;
   //IRQ
   //localparam int       irq_total_num_c                =  8;  // unused (Verilator UNUSEDPARAM)
   localparam int       irq_total_num_ext_c            =  8;
-  
+
 endpackage
+
+// ---------------------------------------------------------------------------
+// CPU -- I-Cache interface
+// Spec: 03_arch_memory_concept.tex, subsec. "Instruction Bus (CPU -- I-Cache)"
+// ---------------------------------------------------------------------------
+interface as_icache_if (input logic clk_i,
+                        input logic rst_i);
+  logic [63:0] ic_addr;
+  logic        ic_req;
+  logic        ic_flush;
+  logic        ic_stall;
+  logic        ic_flush_done;
+  logic        ic_err;
+  logic [31:0] ic_rdata;
+  logic        ic_rvalid;
+  modport cpu  (output ic_addr, ic_req, ic_flush,
+                input  ic_stall, ic_flush_done, ic_err,
+                       ic_rdata, ic_rvalid);
+  modport cache(input  ic_addr, ic_req, ic_flush,
+                output ic_stall, ic_flush_done, ic_err,
+                       ic_rdata, ic_rvalid);
+endinterface
+
+// ---------------------------------------------------------------------------
+// CPU -- D-Cache interface
+// Spec: 03_arch_memory_concept.tex, subsec. "Data Bus (CPU -- D-Cache)"
+// ---------------------------------------------------------------------------
+interface as_dcache_if (input logic clk_i,
+                        input logic rst_i);
+  logic [63:0] dc_addr;
+  logic        dc_req;
+  logic        dc_wr;
+  logic [2:0]  dc_size;
+  logic [63:0] dc_wdata;
+  logic [7:0]  dc_wstrb;
+  logic        dc_flush;
+  logic        dc_stall;
+  logic        dc_flush_done;
+  logic        dc_err;
+  logic [63:0] dc_rdata;
+  logic        dc_rvalid;
+  modport cpu  (output dc_addr, dc_req, dc_wr, dc_size,
+                       dc_wdata, dc_wstrb, dc_flush,
+                input  dc_stall, dc_flush_done, dc_err,
+                       dc_rdata, dc_rvalid);
+  modport cache(input  dc_addr, dc_req, dc_wr, dc_size,
+                       dc_wdata, dc_wstrb, dc_flush,
+                output dc_stall, dc_flush_done, dc_err,
+                       dc_rdata, dc_rvalid);
+endinterface
+
+// ---------------------------------------------------------------------------
+// AXI4 cache memory bus (I/D-Cache <--> Memory Arbiter <--> QSPI data port)
+// Spec: 03_arch_memory_concept.tex, subsec. "AXI4 Memory Bus"
+//       Parameters: ADDR_W=32, DATA_W=64, ID_W=4
+//       Channels used: AR, R (read-only for cache fills);
+//                      AW, W, B present for completeness / D-Cache write-back
+// ---------------------------------------------------------------------------
+interface as_axi4_if #(
+  parameter int ADDR_W = 32,
+  parameter int DATA_W = 64,
+  parameter int ID_W   = 4,
+  parameter int STRB_W = DATA_W / 8
+)(
+  input logic clk_i,
+  input logic rst_i
+);
+  // AR channel
+  logic [ID_W-1:0]   arid;
+  logic [ADDR_W-1:0] araddr;
+  logic [7:0]        arlen;
+  logic [2:0]        arsize;
+  logic [1:0]        arburst;
+  logic              arvalid;
+  logic              arready;
+  // R channel
+  logic [ID_W-1:0]   rid;
+  logic [DATA_W-1:0] rdata;
+  logic [1:0]        rresp;
+  logic              rlast;
+  logic              rvalid;
+  logic              rready;
+  // AW channel
+  logic [ID_W-1:0]   awid;
+  logic [ADDR_W-1:0] awaddr;
+  logic [7:0]        awlen;
+  logic [2:0]        awsize;
+  logic [1:0]        awburst;
+  logic              awvalid;
+  logic              awready;
+  // W channel
+  logic [DATA_W-1:0] wdata;
+  logic [STRB_W-1:0] wstrb;
+  logic              wlast;
+  logic              wvalid;
+  logic              wready;
+  // B channel
+  logic [ID_W-1:0]   bid;
+  logic [1:0]        bresp;
+  logic              bvalid;
+  logic              bready;
+
+  modport master (
+    output arid, araddr, arlen, arsize, arburst, arvalid,
+           rready,
+           awid, awaddr, awlen, awsize, awburst, awvalid,
+           wdata, wstrb, wlast, wvalid,
+           bready,
+    input  arready,
+           rid, rdata, rresp, rlast, rvalid,
+           awready,
+           wready,
+           bid, bresp, bvalid
+  );
+  modport slave (
+    input  arid, araddr, arlen, arsize, arburst, arvalid,
+           rready,
+           awid, awaddr, awlen, awsize, awburst, awvalid,
+           wdata, wstrb, wlast, wvalid,
+           bready,
+    output arready,
+           rid, rdata, rresp, rlast, rvalid,
+           awready,
+           wready,
+           bid, bresp, bvalid
+  );
+endinterface
 

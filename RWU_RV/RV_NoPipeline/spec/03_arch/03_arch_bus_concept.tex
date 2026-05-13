@@ -50,7 +50,7 @@ Table~\ref{tab:asDualBus} summarises the key parameters of each bus.
 \caption{On-Chip Bus Summary}
 \label{tab:asDualBus}
 \centering
-\begin{tabularx}{\textwidth}{|l |l |l |X|}
+\begin{tabularx}{\textwidth}{|l |X |X |X|}
   \hline
   Property          & Wishbone B4 Classic         & AXI4 (cache subset)      & Comment \\
   \hline
@@ -102,76 +102,76 @@ The QSPI controller is the only block that participates in both buses
   \draw[thick,->] (7.5,13.0) -- (7.5,12.0) node[midway,right,font=\small]{D-Bus};
 
   % Wishbone master port (CPU downward to WB bus)
-  \draw[thick,blue,->] (6.0,13.0) -- (6.0,8.5)
+  \draw[thick,blue,->] (6.0,13.0) -- (6.0,7.5)
     node[midway,left,font=\small,blue]{Wishbone};
 
   % ---- I-Cache ----
-  \filldraw[fill=green!10, draw=black] (1.5,10.5) rectangle (6.0,12.0);
-  \node[align=center] at (3.75,11.5) {\textbf{I-Cache}};
-  \node[align=center,font=\small] at (3.75,11.0) {4-way SA, 32\,B line};
+  \filldraw[fill=green!10, draw=black] (1.0,10.5) rectangle (5.5,12.0);
+  \node[align=center] at (3.25,11.5) {\textbf{I-Cache}};
+  \node[align=center,font=\small] at (3.25,11.0) {4-way SA, 32\,B line};
 
   % ---- D-Cache ----
-  \filldraw[fill=orange!10, draw=black] (6.0,10.5) rectangle (10.5,12.0);
-  \node[align=center] at (8.25,11.5) {\textbf{D-Cache}};
-  \node[align=center,font=\small] at (8.25,11.0) {4-way SA, 32\,B line};
+  \filldraw[fill=orange!10, draw=black] (6.5,10.5) rectangle (11.0,12.0);
+  \node[align=center] at (8.75,11.5) {\textbf{D-Cache}};
+  \node[align=center,font=\small] at (8.75,11.0) {4-way SA, 32\,B line};
 
   % AXI4 from I-Cache to arbiter
-  \draw[thick,red,->] (3.75,10.5) -- (3.75,9.5) -- (5.2,9.5)
+  \draw[thick,red,->] (3.75,10.5) -- (3.5,9.5)
     node[near start,left,font=\small,red]{AXI4 M};
 
   % AXI4 from D-Cache to arbiter
-  \draw[thick,red,->] (8.25,10.5) -- (8.25,9.5) -- (6.8,9.5)
+  \draw[thick,red,->] (8.25,10.5)  -- (4.5,9.5)
     node[near start,right,font=\small,red]{AXI4 M};
 
   % ---- Memory Arbiter ----
-  \filldraw[fill=yellow!20, draw=black] (4.5,8.5) rectangle (7.5,9.5);
-  \node[align=center] at (6.0,9.0) {\textbf{Memory Arbiter}};
+  \filldraw[fill=yellow!20, draw=black] (2.5,8.5) rectangle (5.5,9.5);
+  \node[align=center] at (4.0,9.0) {\textbf{Memory Arbiter}};
 
   % AXI4 from arbiter to QSPI
-  \draw[thick,red,->] (6.0,8.5) -- (6.0,7.5)
+  \draw[thick,red,->] (5.0,8.5) -- (6.0,5.5)
     node[midway,right,font=\small,red]{AXI4 S};
 
   % ---- QSPI Controller ----
-  \filldraw[fill=purple!10, draw=black] (3.5,6.5) rectangle (8.5,7.5);
-  \node[align=center] at (6.0,7.25) {\textbf{QSPI Controller}};
-  \node[align=center,font=\small] at (6.0,6.75) {data port: AXI4 \quad cfg port: Wishbone};
+  \filldraw[fill=purple!10, draw=black] (2.5,4.5) rectangle (9.5,5.5);
+  \node[align=center] at (6.0,5.25) {\textbf{QSPI Controller}};
+  \node[align=center,font=\small] at (6.0,4.75) {data port: AXI4 \quad cfg port: Wishbone};
 
   % Wishbone to QSPI cfg port
-  \draw[thick,blue,->] (6.0,8.5) -- (6.25,7.5);
+  \draw[thick,blue,->] (6.25,7.5) -- (6.25,5.5);
 
   % QSPI bus to NOR Flash
-  \draw[thick,->] (6.0,6.5) -- (6.0,5.5) node[midway,right,font=\small]{QSPI};
+  \draw[thick,->] (6.0,4.5) -- (6.0,3.5) node[midway,right,font=\small]{QSPI};
 
   % ---- NOR Flash ----
-  \filldraw[fill=red!10, draw=black] (3.5,4.5) rectangle (8.5,5.5);
-  \node[align=center] at (6.0,5.0) {\textbf{NOR Flash}};
+  \filldraw[fill=red!10, draw=black] (3.5,2.5) rectangle (8.5,3.5);
+  \node[align=center] at (6.0,3.0) {\textbf{NOR Flash}};
 
   % ---- Wishbone Bus ----
-  \draw[thick,blue] (0.5,8.5) -- (11.5,8.5);
-  \node[blue,font=\small] at (0.0,8.7) {WB};
+  \draw[thick,blue] (0.5,7.5) -- (11.5,7.5);
+  \node[blue,font=\small] at (0.0,7.7) {WB};
 
   % ---- GPIO ----
-  \filldraw[fill=gray!15, draw=black] (0.0,7.0) rectangle (2.5,8.0);
-  \node[align=center] at (1.25,7.5) {\textbf{GPIO}};
-  \draw[thick,blue,->] (1.25,8.5) -- (1.25,8.0);
+  \filldraw[fill=gray!15, draw=black] (0.0,6.0) rectangle (2.5,7.0);
+  \node[align=center] at (1.25,6.5) {\textbf{GPIO}};
+  \draw[thick,blue,->] (1.25,7.5) -- (1.25,7.0);
 
   % ---- UART ----
-  \filldraw[fill=gray!15, draw=black] (2.8,7.0) rectangle (5.3,8.0);
-  \node[align=center] at (4.05,7.5) {\textbf{UART}};
-  \draw[thick,blue,->] (4.05,8.5) -- (4.05,8.0);
+  \filldraw[fill=gray!15, draw=black] (2.8,6.0) rectangle (5.3,7.0);
+  \node[align=center] at (4.05,6.5) {\textbf{UART}};
+  \draw[thick,blue,->] (4.05,7.5) -- (4.05,7.0);
 
   % ---- ... ----
-  \filldraw[fill=gray!15, draw=black] (9.0,7.0) rectangle (11.5,8.0);
-  \node[align=center] at (10.25,7.5) {\textbf{...}};
-  \draw[thick,blue,->] (10.25,8.5) -- (10.25,8.0);
+  \filldraw[fill=gray!15, draw=black] (9.0,6.0) rectangle (11.5,7.0);
+  \node[align=center] at (10.25,6.5) {\textbf{...}};
+  \draw[thick,blue,->] (10.25,7.5) -- (10.25,7.0);
 
   % Legend
-  \draw[thick,blue] (0.5,3.5) -- (1.5,3.5);
-  \node[right,font=\small] at (1.5,3.5) {Wishbone B4 Classic};
-  \draw[thick,red]  (0.5,3.0) -- (1.5,3.0);
-  \node[right,font=\small] at (1.5,3.0) {AMBA AXI4 (read-only subset)};
-  \draw[thick]      (0.5,2.5) -- (1.5,2.5);
-  \node[right,font=\small] at (1.5,2.5) {Other (QSPI, custom)};
+  \draw[thick,blue] (0.5,1.5) -- (1.5,1.5);
+  \node[right,font=\small] at (1.5,1.5) {Wishbone B4 Classic};
+  \draw[thick,red]  (0.5,1.0) -- (1.5,1.0);
+  \node[right,font=\small] at (1.5,1.0) {AMBA AXI4 (read-only subset)};
+  \draw[thick]      (0.5,0.5) -- (1.5,0.5);
+  \node[right,font=\small] at (1.5,0.5) {Other (QSPI, custom)};
 
 \end{tikzpicture}
 \caption{On-Chip Bus Topology -- Dual-Bus Architecture}
