@@ -1,0 +1,80 @@
+# ip_icache – 4-Way Set-Associative Instruction Cache
+
+## Verzeichnisstruktur
+
+    ip_icache/
+    ├── src/asICache.sv        DUT: 4-Way SA I-Cache (SETS=32, LINE=32 B, AXI4 64-Bit)
+    ├── tb/tb_asICache.sv      Testbench (TC01–TC07, 27 Checks)
+    ├── sim/sim_main.cpp       Verilator C++ Driver (FST-Trace)
+    └── CMakeLists.txt         Build-System (Verilator only)
+
+Abhängigkeit: `as_pack.sv` (Interfaces as_axi4_if, as_icache_if usw.) wird aus
+`../RWU_RV/RV_NoPipeline/src/as_pack.sv` eingebunden.
+
+## Simulation starten
+
+Alle Befehle werden im Verzeichnis `ip_icache/` ausgeführt.
+
+### Einmalig: Build-Verzeichnis erzeugen
+
+    rm -rf build
+    cmake -S . -B build
+
+### Variante 1 – Nur Simulation (Regression, kein Waveform)
+
+    cmake --build build --target simulate
+
+Ausgabe auf stdout:
+    === tb_asICache start ===
+    TC01 ... TC07 ...
+    PASS: all 27 checks passed.
+
+### Variante 2 – Simulation + GTKWave
+
+    cmake --build build --target waves
+
+Startet erst die Simulation, öffnet dann GTKWave mit `dump_icache.fst`.
+
+### Variante 3 – Nur Verilieren / Kompilieren (kein Run)
+
+    cmake --build build --target verilate
+
+Erzeugt das Verilator-Binary `build/obj_dir/Vtb_asICache`, ohne es auszuführen.
+
+## Waveform-Datei
+
+Die FST-Datei `dump_icache.fst` wird bei jedem Simulation-Run im aktuellen
+Arbeitsverzeichnis (in der Regel `ip_icache/`) erzeugt bzw. überschrieben.
+Manuell öffnen:
+
+    gtkwave dump_icache.fst
+
+## Komplette Sequenz (Clean Build + Run)
+
+    rm -rf build
+    cmake -S . -B build
+    cmake --build build --target simulate
+
+## Cache-Konfiguration (asICache.sv Parameter)
+
+| Parameter      | Default | Bedeutung                        |
+|----------------|---------|----------------------------------|
+| CACHE_SIZE_B   | 4096    | Gesamt-Cache-Größe in Byte       |
+| WAYS           | 4       | Anzahl Ways (Set-Assoziativität) |
+| LINE_BYTES     | 32      | Cache-Line-Größe in Byte         |
+| PA_WIDTH       | 32      | Physikalische Adressbreite       |
+| AXI_DW         | 64      | AXI4 Datenbreite (Bit)           |
+
+Abgeleitete Werte: SETS=32, TAG=22 Bit, INDEX=5 Bit, OFFSET=5 Bit, 4 Beats/Burst.
+
+## Testfälle (tb_asICache.sv)
+
+| TC   | Beschreibung                                                       |
+|------|--------------------------------------------------------------------|
+| TC01 | Cold miss: AXI4 Burst-Fetch, korrekte rdata                       |
+| TC02 | Hit: gleiche Adresse, kein AXI4-Transfer                          |
+| TC03 | Hit: anderer Instr.-Offset im selben Cache-Line                   |
+| TC04 | Miss: anderer Set (Index=1)                                       |
+| TC05 | 4-Way-Fill Set 0: alle 4 Ways befüllt, anschließend 4 Hits        |
+| TC06 | Flush: alle Sets invalidiert, Re-Fetch triggert Miss               |
+| TC07 | AXI4 RRESP-Fehler: ic_err-Puls, kein ic_rvalid                   |
