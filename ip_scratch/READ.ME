@@ -1,0 +1,108 @@
+# ip_scratch – Scratchpad SRAM (64-bit × 1024, Synchronous, Byte-Enable)
+
+## Verzeichnisstruktur
+
+    ip_scratch/
+    ├── src/asScratch.sv        DUT: Scratchpad SRAM (SP_DEPTH=1024, 64-Bit)
+    ├── tb/tb_asScratch.sv      Testbench (TC01–TC12, 20 Checks)
+    ├── sim/sim_main.cpp        Verilator C++ Driver (FST-Trace)
+    └── CMakeLists.txt          Build-System (Verilator only)
+
+Abhängigkeit: `as_pack.sv` (Interface as_dcache_if) wird aus
+`../RWU_RV/RV_NoPipeline/src/as_pack.sv` eingebunden.
+
+## Simulation starten
+
+Alle Befehle werden im Verzeichnis `ip_scratch/` ausgeführt.
+
+### Einmalig: Build-Verzeichnis erzeugen
+
+    rm -rf build
+    cmake -S . -B build
+
+### Variante 1 – Nur Simulation (Regression, kein Waveform)
+
+    cmake --build build --target simulate
+
+Ausgabe auf stdout:
+    === tb_asScratch start ===
+    TC01 ... TC12 ...
+    PASS: all 20 checks passed.
+
+### Variante 2 – Simulation + GTKWave
+
+    cmake --build build --target waves
+
+Startet erst die Simulation, öffnet dann GTKWave mit `dump_scratch.fst`.
+
+### Variante 3 – Nur Verilieren / Kompilieren (kein Run)
+
+    cmake --build build --target verilate
+
+Erzeugt das Verilator-Binary `build/obj_dir/Vtb_asScratch`, ohne es auszuführen.
+
+## Waveform-Datei
+
+Die FST-Datei `dump_scratch.fst` wird bei jedem Simulation-Run im
+Build-Verzeichnis (`build/`) erzeugt bzw. überschrieben.
+Manuell öffnen:
+
+    gtkwave build/dump_scratch.fst
+
+## Komplette Sequenz (Clean Build + Run)
+
+    rm -rf build
+    cmake -S . -B build
+    cmake --build build --target simulate
+
+## SRAM-Konfiguration (asScratch.sv Parameter)
+
+| Parameter    | Default | Bedeutung                              |
+|--------------|---------|----------------------------------------|
+| SP_DEPTH     | 1024    | Anzahl 64-Bit-Einträge (8 KB gesamt)   |
+| PA_WIDTH     | 32      | Physikalische Adressbreite (Doku)      |
+
+Abgeleitete Werte: ADDR_W = log2(SP_DEPTH) = 10; Wortadresse = dc_addr[12:3].
+
+## CPU-Interface (as_dcache_if – Cache-Seite)
+
+| Signal          | Richtung     | Bedeutung                                   |
+|-----------------|--------------|---------------------------------------------|
+| dc_addr[63:0]   | CPU→Scratch  | Byte-Adresse (Bits [12:3] = Wortadresse)    |
+| dc_req          | CPU→Scratch  | Anforderungs-Puls (1 Takt)                  |
+| dc_wr           | CPU→Scratch  | 1 = Schreiben, 0 = Lesen                    |
+| dc_size[2:0]    | CPU→Scratch  | RISC-V func3 (lb/lh/lw/ld/lbu/lhu/lwu)     |
+| dc_wdata[63:0]  | CPU→Scratch  | Schreibdaten (byte-positioniert)            |
+| dc_wstrb[7:0]   | CPU→Scratch  | Byte-Enables                                |
+| dc_stall        | Scratch→CPU  | 1 = 1-Takt-Stall (nur bei Lesezugriffen)    |
+| dc_rvalid       | Scratch→CPU  | Lesedaten gültig (1-Takt-Puls)              |
+| dc_rdata[63:0]  | Scratch→CPU  | Lesedaten (sign/zero-extended per dc_size)  |
+
+Nicht verwendete Signale: dc_flush, dc_flush_done, dc_err (immer 0).
+
+## Timing-Diagramm Lesezugriff (1-Takt-Stall)
+
+    Takt  :  __|‾|__|‾|__|‾|__
+    dc_req:  ___|‾‾‾|________
+    dc_stall:    |‾‾‾|_______   (1 Takt)
+    dc_rvalid:       |‾‾‾|___   (nächster Takt)
+    dc_rdata:        [gültig]
+
+Schreibzugriffe: dc_stall = 0, Daten werden am selben Takt-Flanke eingeschrieben.
+
+## Testfälle (tb_asScratch.sv)
+
+| TC   | Beschreibung                                                             |
+|------|--------------------------------------------------------------------------|
+| TC01 | ld: 64-bit Schreib-/Lesezugriff                                         |
+| TC02 | lw / lwu: sign- und zero-extend, Byte-Offset 0                          |
+| TC03 | lw / lwu: sign- und zero-extend, Byte-Offset 4                          |
+| TC04 | lb / lbu: sign- und zero-extend, Byte-Offset 0                          |
+| TC05 | lh / lhu: sign- und zero-extend, Halbwort-Offset 0                      |
+| TC06 | lh / lhu: sign- und zero-extend, Halbwort-Offset 4                      |
+| TC07 | lb / lbu: sign- und zero-extend, Byte-Offset 7 (höchstes Byte)          |
+| TC08 | Byte-Enable Partial Write (wstrb=0xAA), Rückleseverifikation             |
+| TC09 | Randbedingung: letztes Wort im Scratchpad (Adresse 0x1FF8)              |
+| TC10 | Randbedingung: erstes Wort (Adresse 0x0000)                             |
+| TC11 | Back-to-Back-Lesezugriffe auf zwei verschiedene Wörter                   |
+| TC12 | lb positiv (kein sign-extend) und lb negativ (sign-extend)              |
