@@ -43,6 +43,7 @@ set(ASM_TESTS
     instr07slli
     instr29lui
     scratchpad_intensive
+    dcache_test
 )
 
 add_custom_target(regression)
