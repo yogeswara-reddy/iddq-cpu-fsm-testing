@@ -67,3 +67,23 @@ set_property IOSTANDARD LVCMOS33 [get_ports fault_active_o]
 ## False paths on static control signals
 set_false_path -from [get_ports iddq_measure_i]
 set_false_path -from [get_ports {fault_sel_i[*]}]
+
+## ============================================================
+## Basic I/O timing constraints
+## These remove TIMING-18 methodology warnings by defining
+## external input/output timing relative to sys_clk.
+## ============================================================
+
+## rst_i is asynchronous reset, so exclude it from synchronous timing
+set_false_path -from [get_ports rst_i]
+
+## load_pending_i is treated as an external synchronous input
+##set_input_delay 2.000 -clock sys_clk [get_ports load_pending_i]
+
+## Output delays for observable FSM outputs
+##set_output_delay 2.000 -clock sys_clk [get_ports fetch0_o]
+##set_output_delay 2.000 -clock sys_clk [get_ports fetch1_o]
+##set_output_delay 2.000 -clock sys_clk [get_ports exec_o]
+##set_output_delay 2.000 -clock sys_clk [get_ports execld_o]
+##set_output_delay 2.000 -clock sys_clk [get_ports {state_obs_o[*]}]
+##set_output_delay 2.000 -clock sys_clk [get_ports fault_active_o]
