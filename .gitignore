@@ -1,19 +1,40 @@
+# Vivado generated files
 *.jou
 *.log
 *.str
-*.pb
-*.dcp
-*.bit
-*.bin
-*/runs/
-*.runs/
+*.tmp
+*.backup
+*.bak
+key.txt
+
+# Vivado generated directories
 *.cache/
-*.hbs
-*.wdb
-*.xpr.bak
-*.gen/
+*.hw/
 *.ip_user_files/
-*.vcd
+*.runs/
+*.sim/
+*.gen/
+*.srcs/utils_1/imports/
+*.xpr.zip
+
+# Simulation generated files
 xsim.dir/
+*.wdb
+*.vcd
+*.pb
+
+# OS/editor files
 .DS_Store
 Thumbs.db
+.vscode/
+
+# Vivado generated folders anywhere in project
+**/*.cache/
+**/*.hw/
+**/*.runs/
+**/*.sim/
+**/*.gen/
+**/*.srcs/utils_1/
+
+# Private files
+key.txt
