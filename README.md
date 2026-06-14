@@ -1,231 +1,300 @@
-# IDDQ Fault Testing — CPU FSM and ALU
+````markdown
+# IDDQ-Style Fault Testing — CPU FSM
 
-IDDQ (Quiescent Current) fault testing implementation for the CPU Finite State Machine and Arithmetic Logic Unit of the RWU-RV64i RISC-V processor. Simulated and synthesized on the Zybo Z7-10 FPGA board using Vivado 2024.2.
+IDDQ-style stuck-at fault testing implementation for the CPU Finite State Machine (FSM) of the RWU-RV64i RISC-V processor. The design was simulated, synthesized, and implemented on the Zybo Z7-10 FPGA target using Vivado 2024.2.
 
----
-
-## IDDQ Testing Methodology
-
-IDDQ testing works by driving the circuit into a known static state, then freezing all switching activity and measuring the quiescent VDD supply current. A fault-free circuit draws only leakage current. A stuck-at or bridging fault causes an anomalous current path, which shows up as elevated IDDQ.
-
-In simulation, the freeze is modeled by a clock-enable signal (`iddq_measure_i = 1`). On hardware, a `BUFGCE` primitive gates the clock directly.
-
-Test flow per vector:
-1. Drive the DUT into the target state using normal clock cycles
-2. Assert `iddq_measure_i = 1` — all flip-flops hold state
-3. Observe outputs and compare against golden reference
-4. Release `iddq_measure_i = 0` before the next transition
+> Note: This project performs **IDDQ-style RTL fault simulation**. It does not perform real physical IDDQ current measurement. The `iddq_measure_i` signal is used as a freeze/measurement control signal in simulation and FPGA testing.
 
 ---
 
-## Part 1 — CPU FSM
+## Project Objective
 
-### FSM Overview
+The objective of this project is to verify whether stuck-at faults in the CPU control FSM can be detected using an IDDQ-style test methodology.
 
-The CPU FSM has 4 states encoded in 2 flip-flops:
+The test focuses on:
+
+- Freezing the FSM in known stable states
+- Injecting stuck-at faults on FSM state bits
+- Comparing the observed FSM output against the golden fault-free reference
+- Calculating stuck-at fault coverage
+
+The current project scope is limited to the **CPU FSM fault test**. Standalone ALU fault-testing files that were added earlier have been removed because they did not test the original RISC-V ALU module.
+
+---
+
+## IDDQ-Style Testing Methodology
+
+Traditional IDDQ testing works by driving a CMOS circuit into a known static state and measuring the quiescent VDD supply current. A fault-free circuit draws only leakage current, while physical defects such as bridging faults may create abnormal current paths.
+
+In this RTL-level project, actual current is not measured. Instead, the IDDQ concept is modeled by holding the FSM state stable during an observation window.
+
+Test flow:
+
+1. Reset the DUT.
+2. Drive the FSM into a known target state using normal clock cycles.
+3. Assert `iddq_measure_i = 1` to freeze the FSM state.
+4. Observe FSM outputs.
+5. Compare the observed outputs with the expected golden reference.
+6. Inject stuck-at faults using `fault_sel_i`.
+7. Repeat the same observation sequence.
+8. Count detected faults and calculate fault coverage.
+
+---
+
+## CPU FSM Overview
+
+The CPU FSM contains four states encoded using two flip-flops:
 
 | State | Encoding | Description |
-|-------|----------|-------------|
-| FETCH0_ST | 2'b00 | PC driven to instruction memory address |
-| FETCH1_ST | 2'b01 | Instruction register latched from memory |
-| EXEC_ST   | 2'b10 | Instruction execution |
-| EXECLD_ST | 2'b11 | Wait for load data (load instructions only) |
+|------|----------|-------------|
+| `FETCH0_ST` | `2'b00` | First instruction fetch phase |
+| `FETCH1_ST` | `2'b01` | Second instruction fetch phase |
+| `EXEC_ST` | `2'b10` | Instruction execution phase |
+| `EXECLD_ST` | `2'b11` | Load execution/wait phase |
 
-### Fault Model
+Expected golden sequence:
 
-Stuck-at faults on both bits of the 2-bit state register `state_s[1:0]`:
+```text
+FETCH0_ST → FETCH1_ST → EXEC_ST → EXECLD_ST
+````
 
-| Fault ID | Description |
-|----------|-------------|
-| SA0_B0 | state_s[0] stuck-at-0 |
-| SA1_B0 | state_s[0] stuck-at-1 |
-| SA0_B1 | state_s[1] stuck-at-0 |
-| SA1_B1 | state_s[1] stuck-at-1 |
-
-### Test Results
-
-#### Normal IDDQ Simulation
-
-| Vector | State | Result |
-|--------|-------|--------|
-| V1 | FETCH0_ST (2'b00) | ✅ PASS |
-| V2 | FETCH1_ST (2'b01) | ✅ PASS |
-| V3 | EXEC_ST   (2'b10) | ✅ PASS |
-| V4 | EXECLD_ST (2'b11) | ✅ PASS |
-
-**Result: PASS=10, FAIL=0**
-
-#### Fault Injection Simulation
-
-| Fault | Description | Vectors Detected | Result |
-|-------|-------------|-----------------|--------|
-| SA0 on state_s[0] | bit0 stuck-at-0 | FETCH1, EXEC, EXECLD | ✅ Detected |
-| SA1 on state_s[0] | bit0 stuck-at-1 | EXEC | ✅ Detected |
-| SA0 on state_s[1] | bit1 stuck-at-0 | EXEC, EXECLD | ✅ Detected |
-| SA1 on state_s[1] | bit1 stuck-at-1 | FETCH1, EXECLD | ✅ Detected |
-
-**Fault Coverage: 100% (4/4 faults detected)**
-
-#### Synthesis & Implementation
-
-| Metric | Value |
-|--------|-------|
-| Target | Zybo (xc7z010clg400-1) |
-| Tool | Vivado 2024.2 |
-| WNS | 5.939 ns ✅ |
-| Failing Endpoints | 0 ✅ |
-
-### Hardware Mapping (Zybo)
-
-| Signal | Pin | Physical |
-|--------|-----|----------|
-| clk_i | L16 | 125 MHz clock |
-| rst_i | R18 | BTN0 |
-| load_pending_i | G15 | SW0 |
-| iddq_measure_i | P15 | SW1 |
-| fault_sel_i[0] | W13 | SW2 |
-| fault_sel_i[1] | P16 | SW3 |
-| fetch0_o | M14 | LED0 |
-| fetch1_o | M15 | LED1 |
-| exec_o | G14 | LED2 |
-| execld_o | D18 | LED3 |
-
-> Note: `iddq_cpu_fsm_top.sv` (hardware target) uses a `BUFGCE` primitive for real clock gating. `iddq_cpu_fsm_fault_top.sv` (fault injection) uses a clock-enable register instead — simulation-safe and avoids gated-clock CDC warnings.
+The transition to `EXECLD_ST` is controlled using `load_pending_i`.
 
 ---
 
-## Part 2 — ALU
+## Fault Model
 
-### ALU Overview
+The project uses a stuck-at fault model on the FSM state register bits.
 
-8-bit combinational ALU (reduced from 32-bit to fit FPGA resources while preserving the fault injection concept). Supports 8 operations:
+| Fault Select | Injected Fault          |
+| ------------ | ----------------------- |
+| `3'd0`       | No fault                |
+| `3'd1`       | `state_s[0]` stuck-at-0 |
+| `3'd2`       | `state_s[0]` stuck-at-1 |
+| `3'd3`       | `state_s[1]` stuck-at-0 |
+| `3'd4`       | `state_s[1]` stuck-at-1 |
 
-| Encoding | Operation |
-|----------|-----------|
-| 3'd0 | ADD |
-| 3'd1 | SUB |
-| 3'd2 | AND |
-| 3'd3 | OR  |
-| 3'd4 | XOR |
-| 3'd5 | SLT (signed less-than) |
-| 3'd6 | SLL (shift left logical) |
-| 3'd7 | SRL (shift right logical) |
+The fault selector input is:
 
-### Fault Model
-
-Stuck-at faults on the lower result bits and zero flag — chosen to be observable with compact test vectors:
-
-| Fault ID | Description |
-|----------|-------------|
-| FAULT_RES0_SA0 | result_o[0] stuck-at-0 |
-| FAULT_RES0_SA1 | result_o[0] stuck-at-1 |
-| FAULT_RES1_SA0 | result_o[1] stuck-at-0 |
-| FAULT_RES1_SA1 | result_o[1] stuck-at-1 |
-| FAULT_RES2_SA0 | result_o[2] stuck-at-0 |
-| FAULT_RES2_SA1 | result_o[2] stuck-at-1 |
-| FAULT_ZERO_SA0 | zero_o stuck-at-0 |
-| FAULT_ZERO_SA1 | zero_o stuck-at-1 |
-
-### Test Vectors
-
-Each vector is chosen to sensitise a specific bit position:
-
-| Vector | Inputs | Operation | Golden Result | Targets |
-|--------|--------|-----------|---------------|---------|
-| ADD_RES1 | 0x00 + 0x01 | ADD | 0x01, zero=0 | result[0] SA0 |
-| SUB_ZERO | 0x05 − 0x05 | SUB | 0x00, zero=1 | result[0] SA1, zero SA0 |
-| ADD_RES2 | 0x01 + 0x01 | ADD | 0x02, zero=0 | result[1] SA0 |
-| SLL_RES4 | 0x01 << 2   | SLL | 0x04, zero=0 | result[2] SA0 |
-| XOR_ALL1 | 0xAA ^ 0x55 | XOR | 0xFF, zero=0 | result[0/1/2] SA1, zero SA1 |
-| OR_RES6  | 0x02 \| 0x04 | OR | 0x06, zero=0 | result[1/2] cross-check |
-| SLT_RES1 | 3 < 7       | SLT | 0x01, zero=0 | result[0] SA0 (SLT path) |
-| AND_ZERO | 0xAA & 0x55 | AND | 0x00, zero=1 | zero SA1 |
-
-### Test Results
-
-#### Normal IDDQ Simulation
-
-| Vector | Result | zero | Pass/Fail |
-|--------|--------|------|-----------|
-| ADD_RES1 | 0x01 | 0 | ✅ PASS |
-| SUB_ZERO | 0x00 | 1 | ✅ PASS |
-| ADD_RES2 | 0x02 | 0 | ✅ PASS |
-| SLL_RES4 | 0x04 | 0 | ✅ PASS |
-| XOR_ALL1 | 0xFF | 0 | ✅ PASS |
-| OR_RES6  | 0x06 | 0 | ✅ PASS |
-| SLT_RES1 | 0x01 | 0 | ✅ PASS |
-| AND_ZERO | 0x00 | 1 | ✅ PASS |
-
-**Result: PASS=8, FAIL=0**
-
-#### Fault Injection Simulation
-
-| Fault | Description | Detected By | Result |
-|-------|-------------|-------------|--------|
-| FAULT_RES0_SA0 | result[0] stuck-at-0 | ADD_RES1, XOR_ALL1, SLT_RES1 | ✅ Detected |
-| FAULT_RES0_SA1 | result[0] stuck-at-1 | SUB_ZERO, ADD_RES2, SLL_RES4, OR_RES6, AND_ZERO | ✅ Detected |
-| FAULT_RES1_SA0 | result[1] stuck-at-0 | ADD_RES2, XOR_ALL1, OR_RES6 | ✅ Detected |
-| FAULT_RES1_SA1 | result[1] stuck-at-1 | ADD_RES1, SUB_ZERO, SLL_RES4, SLT_RES1, AND_ZERO | ✅ Detected |
-| FAULT_RES2_SA0 | result[2] stuck-at-0 | SLL_RES4, XOR_ALL1, OR_RES6 | ✅ Detected |
-| FAULT_RES2_SA1 | result[2] stuck-at-1 | ADD_RES1, SUB_ZERO, ADD_RES2, SLT_RES1, AND_ZERO | ✅ Detected |
-| FAULT_ZERO_SA0 | zero_o stuck-at-0   | SUB_ZERO, AND_ZERO | ✅ Detected |
-| FAULT_ZERO_SA1 | zero_o stuck-at-1   | ADD_RES1, ADD_RES2, SLL_RES4, XOR_ALL1, OR_RES6, SLT_RES1 | ✅ Detected |
-
-**Fault Coverage: 100% (8/8 faults detected)**
-
-> The ALU is simulation-only in this project (no XDC provided). IDDQ freeze is modeled by applying stable static input vectors — no clock gating is needed for a combinational block.
-
----
-
-## Project Structure
-
+```verilog
+fault_sel_i[2:0]
 ```
+
+---
+
+## Main Design Files
+
+```text
 RWU_RV/RV_NoPipeline/
-├── src/
-│   └── asCPUx.sv                        # Original CPU FSM (RWU-RV64i)
-├── tb/
-│   └── tb_iddq_cpu_fsm.sv               # FSM IDDQ testbench (no fault injection)
 └── RV_NoPipeline.srcs/
     ├── sources_1/new/
-    │   ├── iddq_cpu_fsm_top.sv           # Synthesizable FSM IDDQ wrapper (BUFGCE)
-    │   ├── iddq_cpu_fsm_fault_top.sv     # FSM fault injection RTL (clock-enable)
-    │   └── iddq_alu_top.sv               # ALU fault injection RTL
+    │   └── iddq_cpu_fsm_fault_top.sv
     ├── sim_1/new/
-    │   ├── tb_iddq_cpu_fsm_fault.sv      # FSM fault injection testbench
-    │   └── tb_iddq_alu_fault.sv          # ALU fault injection testbench
+    │   └── tb_iddq_cpu_fsm_fault.sv
     └── constrs_1/new/
-        ├── iddq_cpu_fsm_top.xdc          # Pin constraints (normal FSM)
-        └── iddq_cpu_fsm_fault_top.xdc    # Pin constraints (fault injection FSM)
+        └── iddq_cpu_fsm_fault_top.xdc
+```
+
+### Important Modules
+
+| File                         | Purpose                                       |
+| ---------------------------- | --------------------------------------------- |
+| `iddq_cpu_fsm_fault_top.sv`  | Synthesizable CPU FSM fault-injection wrapper |
+| `tb_iddq_cpu_fsm_fault.sv`   | Testbench for FSM stuck-at fault simulation   |
+| `iddq_cpu_fsm_fault_top.xdc` | Zybo Z7-10 pin and clock constraints          |
+
+---
+
+## FSM Fault Simulation Result
+
+The FSM fault test was run using Vivado behavioral simulation.
+
+### Golden No-Fault Run
+
+| Vector   | Expected State | Result |
+| -------- | -------------- | ------ |
+| `FETCH0` | `00`           | PASS   |
+| `FETCH1` | `01`           | PASS   |
+| `EXEC`   | `10`           | PASS   |
+| `EXECLD` | `11`           | PASS   |
+
+Golden run result:
+
+```text
+Golden run failures: 0
+```
+
+This confirms that the fault-free FSM behavior is correct.
+
+---
+
+## Fault Injection Simulation Result
+
+| Fault                 | Description      | Detected By                | Result   |
+| --------------------- | ---------------- | -------------------------- | -------- |
+| `SA0` on `state_s[0]` | Bit 0 stuck-at-0 | `FETCH1`, `EXEC`, `EXECLD` | Detected |
+| `SA1` on `state_s[0]` | Bit 0 stuck-at-1 | `EXEC`, `EXECLD`           | Detected |
+| `SA0` on `state_s[1]` | Bit 1 stuck-at-0 | `EXEC`, `EXECLD`           | Detected |
+| `SA1` on `state_s[1]` | Bit 1 stuck-at-1 | `FETCH1`                   | Detected |
+
+Final simulation summary:
+
+```text
+Golden run failures   : 0
+Total faults injected : 4
+Faults detected       : 4
+Fault coverage        : 100%
+```
+
+Therefore, all targeted FSM stuck-at faults were detected.
+
+---
+
+## Synthesis and Implementation
+
+The FSM fault-injection wrapper was synthesized and implemented for the Zybo Z7-10 FPGA target.
+
+| Item             | Value              |
+| ---------------- | ------------------ |
+| FPGA Device      | `xc7z010clg400-1`  |
+| Tool             | Vivado 2024.2      |
+| Clock Constraint | 8 ns               |
+| Clock Name       | `sys_clk`          |
+| Fault Coverage   | 100% in simulation |
+
+The implemented design uses the board switches/buttons to control reset, load-pending, IDDQ measurement, and fault selection. FSM state outputs are mapped to LEDs/PMOD pins for observation.
+
+---
+
+## Zybo Z7-10 Hardware Mapping
+
+| Signal           | Pin   | Board Connection    |
+| ---------------- | ----- | ------------------- |
+| `clk_i`          | `L16` | 125 MHz board clock |
+| `rst_i`          | `R18` | BTN0                |
+| `load_pending_i` | `G15` | SW0                 |
+| `iddq_measure_i` | `P15` | SW1                 |
+| `fault_sel_i[0]` | `W13` | SW2                 |
+| `fault_sel_i[1]` | `T16` | SW3                 |
+| `fault_sel_i[2]` | `P16` | BTN1                |
+| `fetch0_o`       | `M14` | LED0                |
+| `fetch1_o`       | `M15` | LED1                |
+| `exec_o`         | `G14` | LED2                |
+| `execld_o`       | `D18` | LED3                |
+| `state_obs_o[0]` | `N15` | PMOD JA[0]          |
+| `state_obs_o[1]` | `L14` | PMOD JA[1]          |
+| `fault_active_o` | `K16` | PMOD JA[2]          |
+
+---
+
+## Timing and Methodology Notes
+
+A clock constraint is applied to `clk_i`:
+
+```tcl
+create_clock -period 8.000 -name sys_clk [get_ports clk_i]
+```
+
+The FSM clock is therefore constrained for implementation timing analysis.
+
+Some methodology warnings may remain related to missing external input/output delay constraints on switch, button, LED, and PMOD signals. These I/O signals are used only for manual control and observation in this test setup, not as a synchronous external interface.
+
+False paths are applied to manual/static control inputs:
+
+```tcl
+set_false_path -from [get_ports rst_i]
+set_false_path -from [get_ports load_pending_i]
+set_false_path -from [get_ports iddq_measure_i]
+set_false_path -from [get_ports {fault_sel_i[*]}]
 ```
 
 ---
 
 ## How to Run
 
-### FSM — Normal IDDQ Simulation
-1. Open `RV_NoPipeline.xpr` in Vivado 2024.2
-2. Set `tb_iddq_cpu_fsm` as simulation top
-3. Run Behavioral Simulation
+### 1. Open the Project
 
-### FSM — Fault Injection Simulation
-1. Set `tb_iddq_cpu_fsm_fault` as simulation top
-2. Run Behavioral Simulation
+Open the Vivado project:
 
-### ALU — Fault Injection Simulation
-1. Set `tb_iddq_alu_fault` as simulation top
-2. Run Behavioral Simulation
+```text
+RWU_RV/RV_NoPipeline/RV_NoPipeline.xpr
+```
 
-### FSM — Synthesis & Implementation (no fault injection)
-1. Set `iddq_cpu_fsm_top` as design top
-2. Run Synthesis → Implementation
+### 2. Run FSM Fault Simulation
 
-### FSM — Synthesis & Implementation (with fault injection)
-1. Set `iddq_cpu_fsm_fault_top` as design top
-2. Run Synthesis → Implementation
+Set simulation top:
+
+```text
+tb_iddq_cpu_fsm_fault
+```
+
+Run:
+
+```text
+Run Behavioral Simulation
+```
+
+Expected final result:
+
+```text
+Golden run failures   : 0
+Total faults injected : 4
+Faults detected       : 4
+Fault coverage        : 100%
+```
+
+### 3. Run FSM Synthesis and Implementation
+
+Set synthesis top:
+
+```text
+iddq_cpu_fsm_fault_top
+```
+
+Then run:
+
+```text
+Run Synthesis
+Run Implementation
+Open Implemented Design
+```
+
+### 4. Generate Reports
+
+Recommended reports:
+
+```text
+Report Utilization
+Report Timing Summary
+Report Methodology
+```
 
 ---
 
+
+
 ## Base Project
 
-This work is built on top of the RWU-RV64i RISC-V processor:
-[https://github.com/asiggel/rwu-rv64iV2.0](https://github.com/asiggel/rwu-rv64iV2.0)
+This work is built on top of the RWU-RV64i RISC-V processor project:
+
+```text
+https://github.com/asiggel/rwu-rv64iV2.0
+```
+
+---
+
+## Final Result
+
+The CPU FSM IDDQ-style stuck-at fault test was successfully completed.
+
+```text
+Golden run failures   : 0
+Total faults injected : 4
+Faults detected       : 4
+Fault coverage        : 100%
+```
+
+The project demonstrates RTL-level IDDQ-style fault testing on the CPU control FSM and verifies that all targeted state-register stuck-at faults are observable through the selected test vectors.
+
+```
+```
